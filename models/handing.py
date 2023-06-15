@@ -2,12 +2,13 @@ import pandas as pd
 from datetime import datetime, timedelta
 from dateutil.parser import parse as datetime_parse
 from models.utils import Typhoon, TyphoonScene, SlotScene, MidstAirport
-from models.utils import Airport, AirportTimeItem, GraphNode, AdjustItem
+from models.utils import Airport, TipAirport, GraphNode, AdjustItem
 
 
 class FlightData(object):
     def __init__(self, min_turn_time: timedelta, duration_start: datetime, duration_end: datetime,
-                 max_lead_time: timedelta, max_domestic_delay: timedelta, max_foreign_delay: timedelta):
+                 max_lead_time: timedelta, max_domestic_delay: timedelta, max_foreign_delay: timedelta,
+                 split_time: timedelta, slot_capacity: int):
         self.min_turn_time = min_turn_time
         self.duration_start = duration_start
         self.duration_end = duration_end
@@ -15,6 +16,9 @@ class FlightData(object):
         self.max_lead_time = max_lead_time
         self.max_domestic_delay = max_domestic_delay
         self.max_foreign_delay = max_foreign_delay
+
+        self.split_time = split_time
+        self.slot_capacity = slot_capacity
 
         # read data
         data_path = r'D:\workspace\TianChiSeason2\data'
@@ -24,19 +28,19 @@ class FlightData(object):
         self._turn_time_ct = pd.read_csv(data_path + r'\turn_time_ct.csv')
 
         self.schedule = None
-        self.aircraft_id_list = None
         self._airport_ls = None
-        self._airport_type_ls = None
-        self._departure_airport_ls = None
+        self.airport_type_ls = None
+        self.departure_airport_ls = None
         self._arrival_airport_ls = None
         self.node_cnt = 0
+        self.tip_node_cnt = -1
         self.airport_list = dict()
+        self.aircraft_list = dict()
         self.typhoon_scene = TyphoonScene()
-        self.slot_scene = SlotScene()
+        self.slot_scene = SlotScene(split_time, slot_capacity)
         self.schedule_groupby_departure = dict()
         self.graph_node_list = dict()
-        self.origin_airport_list = dict()
-        self.destination_airport_list = dict()
+        # self.dest_airport_list = dict()
 
         self.flying_time = dict()
         for i in range(len(self._flying_time_data)):
@@ -75,15 +79,14 @@ class FlightData(object):
         return graph_node
 
     def selection_data(self, aircraft_id: int):
-        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
+        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
-        self.schedule = self.schedule[self.schedule['起飞时间'] >= self.duration_start - timedelta(hours=6)]
-        self.aircraft_id_list = set(list(self.schedule['飞机ID']))
-        self._airport_type_ls = set(list(self.schedule['机型']))
-        self._departure_airport_ls = set(list(self.schedule['起飞机场']))
+        self.airport_type_ls = set(list(self.schedule['机型']))
+        self.departure_airport_ls = set(list(self.schedule['起飞机场']))
         self._arrival_airport_ls = set(list(self.schedule['降落机场']))
-        self._airport_ls = self._departure_airport_ls | self._arrival_airport_ls
+        self._airport_ls = self.departure_airport_ls | self._arrival_airport_ls
+        zero_time = timedelta(minutes=0)
 
         for ap in self._airport_ls:
             self.airport_list[ap] = Airport(ap)
@@ -96,23 +99,27 @@ class FlightData(object):
             groupby_cid = groupby_cid.sort_values(by='起飞时间')
 
             for i in range(len(groupby_cid)):
-                frame = groupby_cid.iloc[i]
-                if frame['起飞时间'] >= self.duration_start:
-                    origin_time = frame['起飞时间']
-                    origin_airport = frame['起飞机场']
-                    if origin_airport not in self.origin_airport_list.keys():
-                        self.origin_airport_list[origin_airport] = AirportTimeItem(origin_airport, origin_time)
-                    elif self.origin_airport_list[origin_airport].time > origin_time:
-                        self.origin_airport_list[origin_airport] = AirportTimeItem(origin_airport, origin_time)
+                start_frame = groupby_cid.iloc[i + 1]
+                if start_frame['起飞时间'] >= self.duration_start:
+                    end_frame = groupby_cid.iloc[i]
+                    origin_flight = dict()
+                    origin_flight['attr'] = "departure"
+                    origin_flight['cid'], origin_flight['fno'] = end_frame['飞机ID'], end_frame['航班号']
+                    origin_flight['tp'], origin_flight['pn'] = end_frame['机型'], end_frame['旅客数']
+                    origin_flight['tpn'], origin_flight['sn'] = end_frame['联程旅客数'], end_frame['座位数']
+                    origin_flight['fids'] = [end_frame['航班ID']]
+                    if end_frame['起飞时间'] >= self.duration_start:  # 恢复期开始前没有航班
+                        origin_flight['ap'] = end_frame['起飞机场']
+                        origin_flight['avt'] = end_frame['起飞时间'] - self.min_turn_time
+                    else:  # 恢复期开始前有航班
+                        origin_flight['ap'], origin_flight['avt'] = end_frame['降落机场'], end_frame['降落时间']
+                    departure_node = GraphNode(self.tip_node_cnt, origin_flight)
+                    origin_adjust = AdjustItem(self.duration_start, origin_flight['avt'], zero_time)
+                    departure_node.adjust_list[zero_time] = origin_adjust
+                    self.graph_node_list[self.tip_node_cnt] = departure_node
+                    self.tip_node_cnt -= 1
+                    self.aircraft_list[cid] = departure_node
                     break
-            destination_airport = groupby_cid['降落机场'].iloc[-1]
-            destination_time = groupby_cid['降落时间'].iloc[-1]
-            if destination_airport not in self.destination_airport_list.keys():
-                self.destination_airport_list[destination_airport] = AirportTimeItem(destination_airport,
-                                                                                     destination_time)
-            elif self.destination_airport_list[destination_airport].time < destination_time:
-                self.destination_airport_list[destination_airport] = AirportTimeItem(destination_airport,
-                                                                                     destination_time)
 
             schedule_groupby_date = groupby_cid.groupby(by='日期')
             for date, groupby_date in schedule_groupby_date:
@@ -122,7 +129,7 @@ class FlightData(object):
                     if dataframe['起飞时间'].iloc[0] < self.duration_start:
                         if len(dataframe) > 1 and dataframe['起飞时间'].iloc[1] > self.duration_start:
                             dataframe = dataframe[dataframe['起飞时间'] > self.duration_start]
-                            print("特殊航班，作为正好位于恢复期的联程后续航班，不可取消，只能调整")
+                            print("特殊航班，作为正好位于恢复期的联程后续航班，不可取消，只能调整", self.node_cnt)
                             print(dataframe)
                         else:
                             continue
@@ -136,7 +143,7 @@ class FlightData(object):
                     flight_info['tp'], flight_info['dom'] = dataframe['机型'].iloc[0], dataframe['国际/国内'].iloc[0]
                     flight_info['pn'], flight_info['tpn'] = dataframe['旅客数'].sum(), dataframe['联程旅客数'].iloc[0]
                     flight_info['sn'], flight_info['para'] = dataframe['座位数'].sum(), dataframe['重要系数'].sum()
-                    flight_info['ma'] = None
+                    flight_info['ma'] = None  # 中间航班信息
 
                     graph_node = GraphNode(self.node_cnt, flight_info)
                     if len(dataframe) > 1:
@@ -167,7 +174,7 @@ class FlightData(object):
                                 straighten = AdjustItem(flight_info['dpt'], flight_info['dpt'] + straighten_flying_time)
                                 straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
                                 straighten.cost += 750 * flight_info['para']
-                                graph_node.adjust_list[timedelta(minutes=0)] = straighten
+                                graph_node.adjust_list[zero_time] = straighten
                                 strengthen_flight.append(graph_node.key)
 
                             # if is_landing_forbid:
@@ -182,18 +189,18 @@ class FlightData(object):
                                                                               latest_delayed_landing_time)
                             graph_node = self.adjust_through_flight(graph_node, landing_fallin_slot, dataframe,
                                                                     'landing')
-                            takeoff_fallin_slot = slots.takeoff_slot.midst_eq(slot_start_time+turn_time,
-                                                                              latest_delayed_landing_time+turn_time)
+                            takeoff_fallin_slot = slots.takeoff_slot.midst_eq(slot_start_time + turn_time,
+                                                                              latest_delayed_landing_time + turn_time)
                             while takeoff_fallin_slot:
                                 si = takeoff_fallin_slot.pop(0)
-                                si.fall_in.append((graph_node.key, si.start_time-turn_time))
+                                si.fall_in.append((graph_node.key, si.start_time - turn_time))
 
                             if is_takeoff_forbid:
                                 # 尝试起飞提前
                                 earliest_advance_time = dataframe['起飞时间'].iloc[-1] - self.max_lead_time
                                 earliest_landing_time = earliest_advance_time - turn_time
                                 gap = self.typhoon_scene[landing_airport].landing_forbid_start() - earliest_landing_time
-                                if gap > timedelta(minutes=0):
+                                if gap > zero_time:
                                     slot_end_time = min(earliest_advance_time + gap,
                                                         self.typhoon_scene[landing_airport].start_time)
                                     takeoff_fallin_slot = slots.takeoff_slot.midst_eq(earliest_advance_time,

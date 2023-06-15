@@ -53,11 +53,11 @@ class AirportClose(object):
         self.effective_date = effective_date
         self.expiration_date = expiration_date
 
-    def is_closed(self, time: datetime) -> tuple or bool:
+    def is_closed(self, time: datetime) -> datetime or bool:
         if self.effective_date <= time <= self.expiration_date + timedelta(days=1):
             current_time = timedelta(hours=time.hour, minutes=time.minute)
             if self.close_time <= current_time <= self.open_time:
-                return self.close_time, self.open_time
+                return datetime(year=time.year, month=time.month, day=time.day) + self.open_time
         else:
             return False
 
@@ -125,12 +125,12 @@ class AirportSlot(object):
 
 
 class SlotScene(SceneList):
-    def __init__(self):
+    def __init__(self, split_time: timedelta, slot_capacity: int):
         super().__init__()
         self.before_time = timedelta(hours=1)
         self.after_time = timedelta(hours=2)
-        self.split_time = timedelta(minutes=5)
-        self.slot_capacity = 2
+        self.split_time = split_time
+        self.slot_capacity = slot_capacity
 
     def add_scene(self, airport: int, scene: Typhoon):
         airport_slot = AirportSlot(scene, self.before_time, self.after_time, self.split_time, self.slot_capacity)
@@ -190,14 +190,10 @@ class AirportList(dict):
     pass
 
 
-class AirportTimeItem(object):
-    def __init__(self, airport: int, time: datetime):
-        self.airport = airport
-        self.time = time
-
-        self.pre = []
-        self.suc = []
-
+class TipAirport(GraphNode):
+    def __init__(self, key: int, flight_info: dict, ctp: set):
+        super().__init__(key, flight_info)
+        self.ctp = Series(0, index=ctp)
 
 
 if __name__ == '__main__':
