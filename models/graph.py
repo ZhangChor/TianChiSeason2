@@ -15,7 +15,7 @@ def model_change_para(before: int, after: int, map_ls: dict):
     if before == after:
         return 0
     else:
-        return 500*map_ls[str(before)+str(after)]
+        return 500 * map_ls[str(before) + str(after)]
 
 
 def passenger_delay_para(delay_time: timedelta):
@@ -29,6 +29,21 @@ def passenger_delay_para(delay_time: timedelta):
         return 3
 
 
+def passenger_endorse_delay_para(delay_time: timedelta):
+    if delay_time < timedelta(hours=6):
+        return delay_time.seconds / (3600 * 30)
+    elif delay_time < timedelta(hours=12):
+        return delay_time.seconds / (3600 * 24)
+    elif delay_time < timedelta(hours=24):
+        return delay_time.seconds / (3600 * 24)
+    elif delay_time < timedelta(hours=36):
+        return delay_time.seconds / (3600 * 18)
+    elif delay_time <= timedelta(hours=48):
+        return delay_time.seconds / (3600 * 16)
+    else:
+        return 4
+
+
 class Graph(object):
     def __init__(self, flight_data: FlightData):
         self.flight_data = flight_data
@@ -36,6 +51,7 @@ class Graph(object):
         self.close_scene = CloseScene()
         self.typhoon_scene: dict = flight_data.typhoon_scene
         self.slot_scene: SlotScene = self.flight_data.slot_scene
+        self.turn_time: dict = self.flight_data.turn_time
         for tip_node in flight_data.aircraft_list.values():
             self.queue.append((tip_node.key, tip_node.adjust_list[timedelta(0)].adjust_time))
         self.type_change_map = {'12': 0, '13': 2, '14': 4, '21': 0.5, '23': 2, '24': 4,
@@ -67,15 +83,24 @@ class Graph(object):
             current_airport = current_flight_info['ap']
             current_time = current_adjust_info.arrival_time
             alter_flights: Airport = airport_list[current_airport]
+            landing_fid = current_flight_info['fids'][-1]
             alter_flight_list = [201] if current_node_num == -24 else alter_flights.flight_list  # 处理特殊航班
             for nn in alter_flight_list:
                 alter_flight_node: GraphNode = node_list[nn]
                 alter_flight_info: dict = alter_flight_node.flight_info
                 alter_flight_adjust: dict = alter_flight_node.adjust_list
+                takeoff_fid = alter_flight_info['fids'][0]
                 alter_flight_dp = alter_flight_info['dp']
                 alter_flight_dpt = alter_flight_info['dpt']
                 alter_flight_ap = alter_flight_info['ap']
                 alter_flight_avt = alter_flight_info['avt']
+
+                fids_key = str(landing_fid) + '-' + str(takeoff_fid)
+                if fids_key in self.turn_time.keys():
+                    turn_time_minute, endorsement_num = self.turn_time[fids_key]
+                    turn_time = timedelta(minutes=int(turn_time_minute))
+                else:
+                    turn_time, endorsement_num = min_turn_time, 0
 
                 # 尝试在alter_flight_adjust中加入AdjustItem
                 # if zero_time not in alter_flight_adjust.keys():
@@ -171,10 +196,10 @@ class Graph(object):
                             continue
 
                     # 正常连接
-                    if min_turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
+                    if turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
                         delay_time = zero_time
-                    elif min_turn_time <= alter_flight_dpt - current_time + max_delay_time:  # 可以通过延误连接
-                        delay_time = current_time - alter_flight_dpt + min_turn_time
+                    elif turn_time <= alter_flight_dpt - current_time + max_delay_time:  # 可以通过延误连接
+                        delay_time = current_time - alter_flight_dpt + turn_time
                     else:  # 无法连接
                         continue
 
@@ -185,15 +210,18 @@ class Graph(object):
                         alter_flight_adjust[delay_time] = adjust_info
 
                 # 尝试连接
+
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
-                    if min_turn_time <= afa.departure_time - current_time:
-                        if afa.adjust_time >= zero_time:
-                            adjust_cost = afa.adjust_time.seconds/3600 * 100
+                    if turn_time <= afa.departure_time - current_time:
+                        if afa.adjust_time >= zero_time:  # 延误
+                            adjust_cost = afa.adjust_time.seconds / 3600 * 100
                             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
-                        else:
-                            adjust_cost = -afa.adjust_time.seconds/3600 * 150
+                            endorsement_cost = passenger_endorse_delay_para(afa.adjust_time) * endorsement_num
+                        else:  # 提前
+                            adjust_cost = -afa.adjust_time.seconds / 3600 * 150
                             passenger_cost = 0
+                            endorsement_cost = 0
 
                         if current_flight_info['cid'] != alter_flight_info['cid']:
                             change_cost = change_aircraft_para(afa.departure_time)
@@ -202,11 +230,11 @@ class Graph(object):
                         else:
                             change_cost = 0
 
-                        if alter_flight_info['sn'] < current_flight_info['pn']:
+                        if alter_flight_info['sn'] < current_flight_info['pn']:  # 取消旅客
                             passenger_cancel_num = current_flight_info['pn'] - alter_flight_info['sn']
                             passenger_cost += passenger_cancel_num * 4
 
-                        cost = (adjust_cost + passenger_cost + change_cost) * alter_flight_info['para']
+                        cost = (adjust_cost + passenger_cost + change_cost + endorsement_cost)*alter_flight_info['para']
 
                         if (current_node_num, adjust_time, cost) not in afa.pre:
                             afa.pre.append((current_node_num, adjust_time, cost))
