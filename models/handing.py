@@ -81,8 +81,8 @@ class FlightData(object):
         return graph_node
 
     def selection_data(self, aircraft_id: int):
-        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
-        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
+        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
+        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
         self.airport_type_ls = set(list(self.schedule['机型']))
@@ -114,6 +114,7 @@ class FlightData(object):
                     if end_frame['起飞时间'] >= self.duration_start:  # 恢复期开始前没有航班
                         origin_flight['ap'] = end_frame['起飞机场']
                         origin_flight['avt'] = end_frame['起飞时间'] - self.min_turn_time
+                        origin_flight['pn'], origin_flight['tpn'] = 0, 0
                     else:  # 恢复期开始前有航班
                         origin_flight['ap'], origin_flight['avt'] = end_frame['降落机场'], end_frame['降落时间']
                     departure_node = GraphNode(self.tip_node_cnt, origin_flight)
@@ -176,7 +177,8 @@ class FlightData(object):
                                     straighten_flying_time = flight_info['avt'] - flight_info['dpt'] - turn_time
                                 straighten = AdjustItem(flight_info['dpt'], flight_info['dpt'] + straighten_flying_time)
                                 straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
-                                straighten.cost += 750 * flight_info['para']
+                                # 拉直成本与因拉直而取消的旅客成本
+                                straighten.cost += (750 + 4 * flight_info['tpn']) * flight_info['para']
                                 graph_node.adjust_list[zero_time] = straighten
                                 strengthen_flight.append(graph_node.key)
 

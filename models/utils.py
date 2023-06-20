@@ -155,8 +155,8 @@ class AdjustItem(object):
 
         self.midst_airport = MidstAirport(-1, None, None)
 
-        self.pre = []
-        self.suc = []
+        self.pre = []  # 存放前驱航班的node key, adjust time和connect cost
+        self.suc = []  # 存放后继航班的node key与adjust time
 
     def __repr__(self):
         return f'{self.adjust_time} {self.midst_airport.arrival_time} {self.midst_airport.departure_time}'

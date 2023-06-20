@@ -1,7 +1,32 @@
 from models.handing import FlightData
 from models.utils import AdjustItem, GraphNode, Airport, AirportClose, CloseScene
 from models.utils import SlotScene, AirportSlot, Slot, SlotItem
-from datetime import timedelta
+from datetime import timedelta, datetime
+
+
+def change_aircraft_para(time: datetime):
+    if time <= datetime(year=2017, month=5, day=6, hour=16):
+        return 15
+    else:
+        return 5
+
+
+def model_change_para(before: int, after: int, map_ls: dict):
+    if before == after:
+        return 0
+    else:
+        return 500*map_ls[str(before)+str(after)]
+
+
+def passenger_delay_para(delay_time: timedelta):
+    if delay_time <= timedelta(hours=2):
+        return 1
+    elif delay_time <= timedelta(hours=4):
+        return 1.5
+    elif delay_time <= timedelta(hours=8):
+        return 2
+    else:
+        return 3
 
 
 class Graph(object):
@@ -13,6 +38,8 @@ class Graph(object):
         self.slot_scene: SlotScene = self.flight_data.slot_scene
         for tip_node in flight_data.aircraft_list.values():
             self.queue.append((tip_node.key, tip_node.adjust_list[timedelta(0)].adjust_time))
+        self.type_change_map = {'12': 0, '13': 2, '14': 4, '21': 0.5, '23': 2, '24': 4,
+                                '31': 1.5, '32': 1.5, '34': 2, '41': 1.5, '42': 1.5, '43': 2}
 
     def add_close(self, closed_list: list):
         for closed in closed_list:
@@ -32,7 +59,7 @@ class Graph(object):
         zero_time = timedelta(minutes=0)
         adjust_item_num = 0
         while self.queue:
-            print(len(self.queue), self.queue)
+            # print(len(self.queue), self.queue)
             current_node_num, adjust_time = self.queue.pop(0)
             current_node: GraphNode = node_list[current_node_num]
             current_flight_info: dict = current_node.flight_info
@@ -79,7 +106,10 @@ class Graph(object):
                             delay_slot = takeoff_slots.midst_eq(self.typhoon_scene[alter_flight_dp].end_time,
                                                                 latest_delayed_time)
                             # 将落入的slot加入node中
-                            for s in advance_slot + delay_slot:
+                            available_slot = advance_slot + delay_slot
+                            if not available_slot:
+                                continue
+                            for s in available_slot:
                                 s: SlotItem
                                 adjust_time = s.start_time - alter_flight_dpt
                                 adjust_info = AdjustItem(alter_flight_dpt + adjust_time,
@@ -94,6 +124,8 @@ class Graph(object):
                             latest_delayed_time = alter_flight_avt + max_delay_time
                             landing_fallin_slot = landing_slots.midst_eq(self.typhoon_scene[alter_flight_ap].end_time,
                                                                          latest_delayed_time)
+                            if not landing_fallin_slot:
+                                continue
                             for s in landing_fallin_slot:
                                 adjust_time = s.start_time - alter_flight_avt
                                 adjust_info = AdjustItem(alter_flight_dpt + adjust_time,
@@ -156,8 +188,29 @@ class Graph(object):
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
                     if min_turn_time <= afa.departure_time - current_time:
-                        if (current_node_num, adjust_time) not in afa.pre:
-                            afa.pre.append((current_node_num, adjust_time))
+                        if afa.adjust_time >= zero_time:
+                            adjust_cost = afa.adjust_time.seconds/3600 * 100
+                            passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
+                        else:
+                            adjust_cost = -afa.adjust_time.seconds/3600 * 150
+                            passenger_cost = 0
+
+                        if current_flight_info['cid'] != alter_flight_info['cid']:
+                            change_cost = change_aircraft_para(afa.departure_time)
+                            change_cost += model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
+                                                             self.type_change_map)
+                        else:
+                            change_cost = 0
+
+                        if alter_flight_info['sn'] < current_flight_info['pn']:
+                            passenger_cancel_num = current_flight_info['pn'] - alter_flight_info['sn']
+                            passenger_cost += passenger_cancel_num * 4
+
+                        cost = (adjust_cost + passenger_cost + change_cost) * alter_flight_info['para']
+
+                        if (current_node_num, adjust_time, cost) not in afa.pre:
+                            afa.pre.append((current_node_num, adjust_time, cost))
+
                         if (nn, afa.adjust_time) not in current_adjust_info.suc:
                             current_adjust_info.suc.append((nn, afa.adjust_time))
                         if (nn, afa.adjust_time) not in self.queue:
