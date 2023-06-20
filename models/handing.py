@@ -62,6 +62,8 @@ class FlightData(object):
 
     @staticmethod
     def adjust_through_flight(graph_node: GraphNode, slots: list, dataframe: pd.DataFrame, mark='takeoff'):
+        if not slots:
+            return graph_node
         flight_info = graph_node.flight_info
         for si in slots:
             if mark == 'landing':
@@ -80,6 +82,7 @@ class FlightData(object):
 
     def selection_data(self, aircraft_id: int):
         self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
+        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
         self.airport_type_ls = set(list(self.schedule['机型']))
@@ -189,6 +192,7 @@ class FlightData(object):
                                                                               latest_delayed_landing_time)
                             graph_node = self.adjust_through_flight(graph_node, landing_fallin_slot, dataframe,
                                                                     'landing')
+                            # 对于落入降落slot的，后续航班的起飞有可能再次落入该机场的起飞slot
                             takeoff_fallin_slot = slots.takeoff_slot.midst_eq(slot_start_time + turn_time,
                                                                               latest_delayed_landing_time + turn_time)
                             while takeoff_fallin_slot:

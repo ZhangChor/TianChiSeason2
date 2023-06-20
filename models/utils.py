@@ -56,7 +56,7 @@ class AirportClose(object):
     def is_closed(self, time: datetime) -> datetime or bool:
         if self.effective_date <= time <= self.expiration_date + timedelta(days=1):
             current_time = timedelta(hours=time.hour, minutes=time.minute)
-            if self.close_time <= current_time <= self.open_time:
+            if self.close_time <= current_time < self.open_time:
                 return datetime(year=time.year, month=time.month, day=time.day) + self.open_time
         else:
             return False

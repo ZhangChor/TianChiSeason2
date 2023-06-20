@@ -1,5 +1,6 @@
 from models.handing import FlightData
 from models.utils import AdjustItem, GraphNode, Airport, AirportClose, CloseScene
+from models.utils import SlotScene, AirportSlot, Slot, SlotItem
 from datetime import timedelta
 
 
@@ -9,6 +10,7 @@ class Graph(object):
         self.queue = []
         self.close_scene = CloseScene()
         self.typhoon_scene: dict = flight_data.typhoon_scene
+        self.slot_scene: SlotScene = self.flight_data.slot_scene
         for tip_node in flight_data.aircraft_list.values():
             self.queue.append((tip_node.key, tip_node.adjust_list[timedelta(0)].adjust_time))
 
@@ -25,8 +27,10 @@ class Graph(object):
         min_turn_time: timedelta = self.flight_data.min_turn_time
         max_domestic_delay: timedelta = self.flight_data.max_domestic_delay
         max_foreign_delay: timedelta = self.flight_data.max_foreign_delay
+        max_lead_time: timedelta = self.flight_data.max_lead_time
+
         zero_time = timedelta(minutes=0)
-        max_adjust_item_num = timedelta(hours=2)/self.flight_data.split_time + 1
+        adjust_item_num = 0
         while self.queue:
             print(len(self.queue), self.queue)
             current_node_num, adjust_time = self.queue.pop(0)
@@ -36,7 +40,7 @@ class Graph(object):
             current_airport = current_flight_info['ap']
             current_time = current_adjust_info.arrival_time
             alter_flights: Airport = airport_list[current_airport]
-            alter_flight_list = [201] if current_node_num == -24 else alter_flights.flight_list  # 特殊航班处理
+            alter_flight_list = [201] if current_node_num == -24 else alter_flights.flight_list  # 处理特殊航班
             for nn in alter_flight_list:
                 alter_flight_node: GraphNode = node_list[nn]
                 alter_flight_info: dict = alter_flight_node.flight_info
@@ -47,8 +51,8 @@ class Graph(object):
                 alter_flight_avt = alter_flight_info['avt']
 
                 # 尝试在alter_flight_adjust中加入AdjustItem
-                # if len(alter_flight_adjust) < max_adjust_item_num:
-                if alter_flight_adjust:
+                # if zero_time not in alter_flight_adjust.keys():
+                if not alter_flight_adjust:
                     max_delay_time = max_domestic_delay if alter_flight_info['dom'] == '国内' else max_foreign_delay
 
                     # 台风场景
@@ -56,11 +60,47 @@ class Graph(object):
                         is_takeoff_forbid_t = self.typhoon_scene[alter_flight_dp].landing_forbid(alter_flight_dpt)
                     else:
                         is_takeoff_forbid_t = False
-
                     if alter_flight_ap in self.typhoon_scene.keys():
                         is_landing_forbid_t = self.typhoon_scene[alter_flight_ap].landing_forbid(alter_flight_avt)
                     else:
                         is_landing_forbid_t = False
+
+                    if is_takeoff_forbid_t or is_landing_forbid_t:
+                        if is_takeoff_forbid_t:  # 起飞遭遇台风场景
+                            slots: AirportSlot = self.slot_scene[alter_flight_dp][0]
+                            # 尝试提前
+                            takeoff_slots: Slot = slots.takeoff_slot
+                            earliest_advance_time = alter_flight_dpt - max_lead_time
+                            advance_slot = takeoff_slots.midst_eq(earliest_advance_time,
+                                                                  self.typhoon_scene[alter_flight_dp].start_time)
+                            # 尝试延误
+                            # landing_slots = slots.landing_slot
+                            latest_delayed_time = alter_flight_dpt + max_delay_time
+                            delay_slot = takeoff_slots.midst_eq(self.typhoon_scene[alter_flight_dp].end_time,
+                                                                latest_delayed_time)
+                            # 将落入的slot加入node中
+                            for s in advance_slot + delay_slot:
+                                s: SlotItem
+                                adjust_time = s.start_time - alter_flight_dpt
+                                adjust_info = AdjustItem(alter_flight_dpt + adjust_time,
+                                                         alter_flight_avt + adjust_time, adjust_time)
+                                adjust_item_num += 1
+                                s.fall_in.append((current_node_num, adjust_time))
+                                alter_flight_adjust[adjust_time] = adjust_info
+
+                        if is_landing_forbid_t:  # 降落遭遇台风场景
+                            slots: AirportSlot = self.slot_scene[alter_flight_ap][0]
+                            landing_slots = self.slot_scene[alter_flight_ap][0].landing_slot
+                            latest_delayed_time = alter_flight_avt + max_delay_time
+                            landing_fallin_slot = landing_slots.midst_eq(self.typhoon_scene[alter_flight_ap].end_time,
+                                                                         latest_delayed_time)
+                            for s in landing_fallin_slot:
+                                adjust_time = s.start_time - alter_flight_avt
+                                adjust_info = AdjustItem(alter_flight_dpt + adjust_time,
+                                                         alter_flight_avt + adjust_time, adjust_time)
+                                adjust_item_num += 1
+                                s.fall_in.append((current_node_num, adjust_time))
+                                alter_flight_adjust[adjust_time] = adjust_info
 
                     # 机场关闭场景
                     is_takeoff_forbid_c, is_landing_forbid_c = False, False
@@ -69,7 +109,7 @@ class Graph(object):
                             cd: AirportClose
                             is_takeoff_forbid_c = cd.is_closed(alter_flight_dpt)
                             if is_takeoff_forbid_c:
-                                if is_takeoff_forbid_t:
+                                if is_takeoff_forbid_t:  # 如果同时处于机场关闭与台风场景，按台风场景处理
                                     is_takeoff_forbid_c = False
                                 break
                     if alter_flight_ap in self.close_scene.airport_list:
@@ -80,6 +120,23 @@ class Graph(object):
                                 if is_landing_forbid_t:
                                     is_landing_forbid_c = False
                                 break
+                    if is_takeoff_forbid_c or is_landing_forbid_c:
+                        delay_time_by_t, delay_time_by_l = zero_time, zero_time
+                        if is_takeoff_forbid_c:
+                            delay_time_by_t = is_takeoff_forbid_c - alter_flight_dpt
+                        if is_landing_forbid_c:
+                            delay_time_by_l = is_landing_forbid_c - alter_flight_avt
+                        if delay_time_by_t <= max_delay_time and delay_time_by_l <= max_delay_time:
+                            delay_time = max(delay_time_by_t, delay_time_by_l)
+                            print(
+                                f'node:{nn} cid:{alter_flight_info["cid"]} fids:{alter_flight_info["fids"]}受机场关闭影响，延误{delay_time}')
+                            adjust_info = AdjustItem(alter_flight_dpt + delay_time,
+                                                     alter_flight_info['avt'] + delay_time, delay_time)
+                            adjust_item_num += 1
+                            if delay_time not in alter_flight_adjust.keys():
+                                alter_flight_adjust[delay_time] = adjust_info
+                        else:  # 无法通过延误避免进入关闭机场
+                            continue
 
                     # 正常连接
                     if min_turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
@@ -88,8 +145,10 @@ class Graph(object):
                         delay_time = current_time - alter_flight_dpt + min_turn_time
                     else:  # 无法连接
                         continue
+
                     adjust_info = AdjustItem(alter_flight_dpt + delay_time, alter_flight_info['avt'] + delay_time,
                                              delay_time)
+                    adjust_item_num += 1
                     if delay_time not in alter_flight_adjust.keys():
                         alter_flight_adjust[delay_time] = adjust_info
 
@@ -103,4 +162,4 @@ class Graph(object):
                             current_adjust_info.suc.append((nn, afa.adjust_time))
                         if (nn, afa.adjust_time) not in self.queue:
                             self.queue.append((nn, afa.adjust_time))
-
+        print(f'AdjustItem num: {adjust_item_num}')
