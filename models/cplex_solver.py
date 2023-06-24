@@ -76,14 +76,6 @@ class CplexSolver(object):
     def aircraft_dual(self) -> list:
         return self._solver.dual_values(self._solver.find_matching_linear_constraints('aircraft'))
 
-    # @property
-    # def upper_x_dual(self) -> list:
-    #     return self._solver.dual_values(self._solver.find_matching_linear_constraints('upper_x'))
-    #
-    # @property
-    # def upper_y_dual(self) -> list:
-    #     return self._solver.dual_values(self._solver.find_matching_linear_constraints('upper_y'))
-
     @property
     def optimal(self) -> float:
         return self._solver.objective_value

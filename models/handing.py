@@ -29,7 +29,7 @@ class FlightData(object):
 
         self.schedule = None
         self._airport_ls = None
-        self.airport_type_ls = None
+        self.aircraft_type_ls = None
         self.departure_airport_ls = None
         self._arrival_airport_ls = None
         self.node_cnt = 0
@@ -40,7 +40,7 @@ class FlightData(object):
         self.slot_scene = SlotScene(split_time, slot_capacity)
         self.schedule_groupby_departure = dict()
         self.graph_node_list = dict()
-        # self.dest_airport_list = dict()
+        self.airport_stop_tp = dict()  # 机场停机类型数
 
         self.flying_time = dict()
         for i in range(len(self._flying_time_data)):
@@ -52,6 +52,15 @@ class FlightData(object):
             item = self._turn_time_ct.iloc[i]
             key = str(item['进港航班ID']) + '-' + str(item['出港航班ID'])
             self.turn_time[key] = (item['最短转机时限（分钟）'], item['中转旅客人数'])
+        self.airline_aircraft_forbid = dict()
+        for i in range(len(self._airline_aircraft_ct)):
+            item = self._airline_aircraft_ct.iloc[i]
+            key = str(item['飞机ID'])
+            rkey = str(item['起飞机场']) + '-' + str(item['降落机场'])
+            if key not in self.airline_aircraft_forbid.keys():
+                self.airline_aircraft_forbid[key] = dict()
+            forbid_map = self.airline_aircraft_forbid[key]
+            forbid_map[rkey] = True
 
     def add_typhoon(self, typhoon_list: list):
         for typhoon in typhoon_list:
@@ -81,18 +90,18 @@ class FlightData(object):
         return graph_node
 
     def selection_data(self, aircraft_id: int):
-        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
-        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
+        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
+        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
-        self.airport_type_ls = set(list(self.schedule['机型']))
+        self.aircraft_type_ls = set(list(self.schedule['机型']))
         self.departure_airport_ls = set(list(self.schedule['起飞机场']))
         self._arrival_airport_ls = set(list(self.schedule['降落机场']))
         self._airport_ls = self.departure_airport_ls | self._arrival_airport_ls
         zero_time = timedelta(minutes=0)
 
         for ap in self._airport_ls:
-            self.airport_list[ap] = Airport(ap)
+            self.airport_list[ap] = Airport(ap, self.aircraft_type_ls)
 
         normal_flight = []
         through_flight = []
@@ -124,6 +133,10 @@ class FlightData(object):
                     self.tip_node_cnt -= 1
                     self.aircraft_list[cid] = departure_node
                     break
+            # 统计每个机场最终停的飞机类型的数量
+            final_flight = groupby_cid.iloc[-1]
+            tp = final_flight['机型']
+            self.airport_list[final_flight['降落机场']].ctp[tp] += 1
 
             schedule_groupby_date = groupby_cid.groupby(by='日期')
             for date, groupby_date in schedule_groupby_date:
@@ -143,7 +156,8 @@ class FlightData(object):
                     flight_info['cid'], flight_info['date'], flight_info['fno'] = cid, date, fno
                     flight_info['fids'] = dataframe['航班ID'].tolist()
                     flight_info['dp'], flight_info['ap'] = dataframe['起飞机场'].iloc[0], dataframe['降落机场'].iloc[-1]
-                    flight_info['dpt'], flight_info['avt'] = dataframe['起飞时间'].iloc[0], dataframe['降落时间'].iloc[-1]
+                    flight_info['dpt'], flight_info['avt'] = dataframe['起飞时间'].iloc[0], dataframe['降落时间'].iloc[
+                        -1]
                     flight_info['tp'], flight_info['dom'] = dataframe['机型'].iloc[0], dataframe['国际/国内'].iloc[0]
                     flight_info['pn'], flight_info['tpn'] = dataframe['旅客数'].sum(), dataframe['联程旅客数'].iloc[0]
                     flight_info['sn'], flight_info['para'] = dataframe['座位数'].sum(), dataframe['重要系数'].sum()
@@ -223,6 +237,11 @@ class FlightData(object):
         print(strengthen_flight)
         print('联程航班个数', len(through_flight))
         print('单程航班个数', len(normal_flight))
+        for v in self.airport_list.values():
+            v: Airport
+            ctp = v.ctp
+            if sum(ctp == 0) < 4:
+                self.airport_stop_tp[v.airport_num] = ctp
 
 
 if __name__ == '__main__':

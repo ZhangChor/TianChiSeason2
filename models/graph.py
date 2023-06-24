@@ -223,21 +223,19 @@ class Graph(object):
                             passenger_cost = 0
                             endorsement_cost = 0
 
-                        if current_flight_info['cid'] != alter_flight_info['cid']:
-                            change_cost = change_aircraft_para(afa.departure_time)
-                            change_cost += model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
-                                                             self.type_change_map)
-                        else:
-                            change_cost = 0
+                        change_cost = change_aircraft_para(afa.departure_time) if current_flight_info['cid'] != alter_flight_info['cid'] else 0
+                        change_cost += model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
+                                                         self.type_change_map)
 
                         if alter_flight_info['sn'] < current_flight_info['pn']:  # 取消旅客
                             passenger_cancel_num = current_flight_info['pn'] - alter_flight_info['sn']
                             passenger_cost += passenger_cancel_num * 4
 
                         cost = (adjust_cost + passenger_cost + change_cost + endorsement_cost)*alter_flight_info['para']
+                        afa.cost += cost
 
-                        if (current_node_num, adjust_time, cost) not in afa.pre:
-                            afa.pre.append((current_node_num, adjust_time, cost))
+                        if (current_node_num, adjust_time, afa.cost) not in afa.pre:
+                            afa.pre.append((current_node_num, adjust_time, afa.cost))
 
                         if (nn, afa.adjust_time) not in current_adjust_info.suc:
                             current_adjust_info.suc.append((nn, afa.adjust_time))

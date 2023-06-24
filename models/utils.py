@@ -181,9 +181,10 @@ class NodeList(dict):
 
 
 class Airport(object):
-    def __init__(self, airport_num: int):
+    def __init__(self, airport_num: int, ctp: set):
         self.airport_num = airport_num
         self.flight_list = []
+        self.ctp = Series(0, index=ctp)
 
 
 class AirportList(dict):
