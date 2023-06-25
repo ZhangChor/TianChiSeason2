@@ -75,7 +75,7 @@ class Graph(object):
         zero_time = timedelta(minutes=0)
         adjust_item_num = 0
         while self.queue:
-            # print(len(self.queue), self.queue)
+            print(len(self.queue), self.queue)
             current_node_num, adjust_time = self.queue.pop(0)
             current_node: GraphNode = node_list[current_node_num]
             current_flight_info: dict = current_node.flight_info
@@ -166,6 +166,7 @@ class Graph(object):
                             cd: AirportClose
                             is_takeoff_forbid_c = cd.is_closed(alter_flight_dpt)
                             if is_takeoff_forbid_c:
+                                opening_time_by_takeoff = cd.opening_time(alter_flight_dpt)
                                 if is_takeoff_forbid_t:  # 如果同时处于机场关闭与台风场景，按台风场景处理
                                     is_takeoff_forbid_c = False
                                 break
@@ -174,17 +175,18 @@ class Graph(object):
                             cd: AirportClose
                             is_landing_forbid_c = cd.is_closed(alter_flight_avt)
                             if is_landing_forbid_c:
+                                opening_time_by_landing = cd.opening_time(alter_flight_avt)
                                 if is_landing_forbid_t:
                                     is_landing_forbid_c = False
                                 break
                     if is_takeoff_forbid_c or is_landing_forbid_c:
-                        delay_time_by_t, delay_time_by_l = zero_time, zero_time
+                        delay_time_by_takeoff, delay_time_by_landing = zero_time, zero_time
                         if is_takeoff_forbid_c:
-                            delay_time_by_t = is_takeoff_forbid_c - alter_flight_dpt
+                            delay_time_by_takeoff = opening_time_by_takeoff - alter_flight_dpt
                         if is_landing_forbid_c:
-                            delay_time_by_l = is_landing_forbid_c - alter_flight_avt
-                        if delay_time_by_t <= max_delay_time and delay_time_by_l <= max_delay_time:
-                            delay_time = max(delay_time_by_t, delay_time_by_l)
+                            delay_time_by_landing = opening_time_by_landing - alter_flight_avt
+                        if delay_time_by_takeoff <= max_delay_time and delay_time_by_landing <= max_delay_time:
+                            delay_time = max(delay_time_by_takeoff, delay_time_by_landing)
                             print(
                                 f'node:{nn} cid:{alter_flight_info["cid"]} fids:{alter_flight_info["fids"]}受机场关闭影响，延误{delay_time}')
                             adjust_info = AdjustItem(alter_flight_dpt + delay_time,
@@ -196,18 +198,20 @@ class Graph(object):
                             continue
 
                     # 正常连接
-                    if turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
-                        delay_time = zero_time
-                    elif turn_time <= alter_flight_dpt - current_time + max_delay_time:  # 可以通过延误连接
-                        delay_time = current_time - alter_flight_dpt + turn_time
-                    else:  # 无法连接
-                        continue
+                    forbid_list = [is_landing_forbid_c, is_takeoff_forbid_c, is_landing_forbid_t, is_takeoff_forbid_t]
+                    if not sum(forbid_list):
+                        if turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
+                            delay_time = zero_time
+                        elif turn_time <= alter_flight_dpt - current_time + max_delay_time:  # 可以通过延误连接
+                            delay_time = current_time - alter_flight_dpt + turn_time
+                        else:  # 无法连接
+                            continue
 
-                    adjust_info = AdjustItem(alter_flight_dpt + delay_time, alter_flight_info['avt'] + delay_time,
-                                             delay_time)
-                    adjust_item_num += 1
-                    if delay_time not in alter_flight_adjust.keys():
-                        alter_flight_adjust[delay_time] = adjust_info
+                        adjust_info = AdjustItem(alter_flight_dpt + delay_time, alter_flight_info['avt'] + delay_time,
+                                                 delay_time)
+                        adjust_item_num += 1
+                        if delay_time not in alter_flight_adjust.keys():
+                            alter_flight_adjust[delay_time] = adjust_info
 
                 # 尝试连接
 
@@ -232,10 +236,10 @@ class Graph(object):
                             passenger_cost += passenger_cancel_num * 4
 
                         cost = (adjust_cost + passenger_cost + change_cost + endorsement_cost)*alter_flight_info['para']
-                        afa.cost += cost
+                        cost += afa.cost
 
-                        if (current_node_num, adjust_time, afa.cost) not in afa.pre:
-                            afa.pre.append((current_node_num, adjust_time, afa.cost))
+                        if (current_node_num, current_adjust_info.adjust_time, cost) not in afa.pre:
+                            afa.pre.append((current_node_num, current_adjust_info.adjust_time, cost))
 
                         if (nn, afa.adjust_time) not in current_adjust_info.suc:
                             current_adjust_info.suc.append((nn, afa.adjust_time))

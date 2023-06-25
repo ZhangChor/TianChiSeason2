@@ -53,13 +53,15 @@ class AirportClose(object):
         self.effective_date = effective_date
         self.expiration_date = expiration_date
 
-    def is_closed(self, time: datetime) -> datetime or bool:
+    def is_closed(self, time: datetime) -> bool:
         if self.effective_date <= time <= self.expiration_date + timedelta(days=1):
             current_time = timedelta(hours=time.hour, minutes=time.minute)
             if self.close_time <= current_time < self.open_time:
-                return datetime(year=time.year, month=time.month, day=time.day) + self.open_time
-        else:
-            return False
+                return True
+        return False
+
+    def opening_time(self, time: datetime) -> datetime:
+        return datetime(year=time.year, month=time.month, day=time.day) + self.open_time
 
 
 class CloseScene(SceneList):
@@ -108,19 +110,19 @@ class AirportSlot(object):
         self.airport = typhoon.airport_num
         self._max_capacity = 200
         self.takeoff_slot = Slot(split_time)
-        self.takeoff_slot.add_slot(typhoon.start_time-before_time, typhoon.start_time, split_capacity)
-        self.takeoff_slot.add_slot(typhoon.start_time-before_time-split_time, typhoon.start_time-before_time,
+        self.takeoff_slot.add_slot(typhoon.start_time - before_time, typhoon.start_time, split_capacity)
+        self.takeoff_slot.add_slot(typhoon.start_time - before_time - split_time, typhoon.start_time - before_time,
                                    slot_capacity=self._max_capacity)  # 额外的无限slot
-        self.takeoff_slot.add_slot(typhoon.end_time, typhoon.end_time+after_time, split_capacity)
-        self.takeoff_slot.add_slot(typhoon.end_time+after_time, typhoon.end_time+after_time+split_time,
+        self.takeoff_slot.add_slot(typhoon.end_time, typhoon.end_time + after_time, split_capacity)
+        self.takeoff_slot.add_slot(typhoon.end_time + after_time, typhoon.end_time + after_time + split_time,
                                    slot_capacity=self._max_capacity)  # 额外的无限slot
 
         self.landing_slot = Slot(split_time)
-        self.landing_slot.add_slot(typhoon.start_time-timedelta(hours=2)-split_time,  # 额外的无限slot
-                                   typhoon.start_time-timedelta(hours=2), slot_capacity=self._max_capacity)
+        self.landing_slot.add_slot(typhoon.start_time - timedelta(hours=2) - split_time,  # 额外的无限slot
+                                   typhoon.start_time - timedelta(hours=2), slot_capacity=self._max_capacity)
 
-        self.landing_slot.add_slot(typhoon.end_time, typhoon.end_time+after_time, split_capacity)
-        self.landing_slot.add_slot(typhoon.end_time+after_time, typhoon.end_time+after_time+split_time,
+        self.landing_slot.add_slot(typhoon.end_time, typhoon.end_time + after_time, split_capacity)
+        self.landing_slot.add_slot(typhoon.end_time + after_time, typhoon.end_time + after_time + split_time,
                                    slot_capacity=self._max_capacity)  # 额外的无限slot
 
 
@@ -135,6 +137,14 @@ class SlotScene(SceneList):
     def add_scene(self, airport: int, scene: Typhoon):
         airport_slot = AirportSlot(scene, self.before_time, self.after_time, self.split_time, self.slot_capacity)
         super().add_scene(airport, airport_slot)
+
+
+class AirportStops(object):
+    def __init__(self, start_time: datetime, end_time: datetime, airport_num: int, capacity: int):
+        self.start_time = start_time
+        self.end_time = end_time
+        self.airport_num = airport_num
+        self.capacity = capacity
 
 
 class MidstAirport(object):

@@ -120,6 +120,7 @@ class FlightData(object):
                     origin_flight['tp'], origin_flight['pn'] = end_frame['机型'], end_frame['旅客数']
                     origin_flight['tpn'], origin_flight['sn'] = end_frame['联程旅客数'], end_frame['座位数']
                     origin_flight['fids'] = [end_frame['航班ID']]
+                    origin_flight['cost'] = 0
                     if end_frame['起飞时间'] >= self.duration_start:  # 恢复期开始前没有航班
                         origin_flight['ap'] = end_frame['起飞机场']
                         origin_flight['avt'] = end_frame['起飞时间'] - self.min_turn_time
@@ -161,6 +162,7 @@ class FlightData(object):
                     flight_info['tp'], flight_info['dom'] = dataframe['机型'].iloc[0], dataframe['国际/国内'].iloc[0]
                     flight_info['pn'], flight_info['tpn'] = dataframe['旅客数'].sum(), dataframe['联程旅客数'].iloc[0]
                     flight_info['sn'], flight_info['para'] = dataframe['座位数'].sum(), dataframe['重要系数'].sum()
+                    flight_info['cost'] = 0
                     flight_info['ma'] = None  # 中间航班信息
 
                     graph_node = GraphNode(self.node_cnt, flight_info)
@@ -192,7 +194,7 @@ class FlightData(object):
                                 straighten = AdjustItem(flight_info['dpt'], flight_info['dpt'] + straighten_flying_time)
                                 straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
                                 # 拉直成本与因拉直而取消的旅客成本
-                                straighten.cost += (750 + 4 * flight_info['tpn']) * flight_info['para']
+                                flight_info['cost'] = (750 + 4 * flight_info['tpn']) * flight_info['para']
                                 graph_node.adjust_list[zero_time] = straighten
                                 strengthen_flight.append(graph_node.key)
 
@@ -234,13 +236,14 @@ class FlightData(object):
                     self.airport_list[flight_info['dp']].flight_list.append(self.node_cnt)
                     self.node_cnt += 1
         print('拉直航班个数', len(strengthen_flight))
-        print(strengthen_flight)
+        # print(strengthen_flight)
         print('联程航班个数', len(through_flight))
+        # print(through_flight)
         print('单程航班个数', len(normal_flight))
         for v in self.airport_list.values():
             v: Airport
             ctp = v.ctp
-            if sum(ctp == 0) < 4:
+            if sum(ctp == 0) < len(self.aircraft_type_ls):
                 self.airport_stop_tp[v.airport_num] = ctp
 
 
