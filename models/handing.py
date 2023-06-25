@@ -137,7 +137,7 @@ class FlightData(object):
             # 统计每个机场最终停的飞机类型的数量
             final_flight = groupby_cid.iloc[-1]
             tp = final_flight['机型']
-            self.airport_list[final_flight['降落机场']].ctp[tp] += 1
+            self.airport_list[final_flight['降落机场']].terminal_ctp[tp] += 1
 
             schedule_groupby_date = groupby_cid.groupby(by='日期')
             for date, groupby_date in schedule_groupby_date:
@@ -233,7 +233,8 @@ class FlightData(object):
                     else:
                         normal_flight.append(graph_node.key)
                     self.graph_node_list[graph_node.key] = graph_node
-                    self.airport_list[flight_info['dp']].flight_list.append(self.node_cnt)
+                    self.airport_list[flight_info['dp']].departure_flight_list.append(self.node_cnt)
+                    self.airport_list[flight_info['ap']].arrival_flight_list.append(self.node_cnt)
                     self.node_cnt += 1
         print('拉直航班个数', len(strengthen_flight))
         # print(strengthen_flight)
@@ -242,7 +243,7 @@ class FlightData(object):
         print('单程航班个数', len(normal_flight))
         for v in self.airport_list.values():
             v: Airport
-            ctp = v.ctp
+            ctp = v.terminal_ctp
             if sum(ctp == 0) < len(self.aircraft_type_ls):
                 self.airport_stop_tp[v.airport_num] = ctp
 

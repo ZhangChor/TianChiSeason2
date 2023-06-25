@@ -84,7 +84,7 @@ class Graph(object):
             current_time = current_adjust_info.arrival_time
             alter_flights: Airport = airport_list[current_airport]
             landing_fid = current_flight_info['fids'][-1]
-            alter_flight_list = [201] if current_node_num == -24 else alter_flights.flight_list  # 处理特殊航班
+            alter_flight_list = [201] if current_node_num == -24 else alter_flights.departure_flight_list  # 处理特殊航班
             for nn in alter_flight_list:
                 alter_flight_node: GraphNode = node_list[nn]
                 alter_flight_info: dict = alter_flight_node.flight_info
@@ -145,7 +145,7 @@ class Graph(object):
 
                         if is_landing_forbid_t:  # 降落遭遇台风场景
                             slots: AirportSlot = self.slot_scene[alter_flight_ap][0]
-                            landing_slots = self.slot_scene[alter_flight_ap][0].landing_slot
+                            landing_slots = slots.landing_slot
                             latest_delayed_time = alter_flight_avt + max_delay_time
                             landing_fallin_slot = landing_slots.midst_eq(self.typhoon_scene[alter_flight_ap].end_time,
                                                                          latest_delayed_time)
@@ -212,13 +212,11 @@ class Graph(object):
                         adjust_item_num += 1
                         if delay_time not in alter_flight_adjust.keys():
                             alter_flight_adjust[delay_time] = adjust_info
-
                 # 尝试连接
-
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
                     if turn_time <= afa.departure_time - current_time:
-                        if afa.adjust_time >= zero_time:  # 延误
+                        if afa.adjust_time > zero_time:  # 延误
                             adjust_cost = afa.adjust_time.seconds / 3600 * 100
                             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
                             endorsement_cost = passenger_endorse_delay_para(afa.adjust_time) * endorsement_num

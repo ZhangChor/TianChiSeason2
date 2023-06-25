@@ -193,8 +193,9 @@ class NodeList(dict):
 class Airport(object):
     def __init__(self, airport_num: int, ctp: set):
         self.airport_num = airport_num
-        self.flight_list = []
-        self.ctp = Series(0, index=ctp)
+        self.departure_flight_list = []
+        self.arrival_flight_list = []
+        self.terminal_ctp = Series(0, index=ctp)
 
 
 class AirportList(dict):
@@ -205,6 +206,16 @@ class TipAirport(GraphNode):
     def __init__(self, key: int, flight_info: dict, ctp: set):
         super().__init__(key, flight_info)
         self.ctp = Series(0, index=ctp)
+
+
+class CostInfo(object):
+    def __init__(self, reduce_cost=0, exec_cost=0):
+        self.reduce_cost = 0
+        self.exec_cost = 0
+        self.best_pre = None
+
+    def __repr__(self):
+        return f'reduce cost: {self.reduce_cost}, best pre: {self.best_pre}'
 
 
 if __name__ == '__main__':
