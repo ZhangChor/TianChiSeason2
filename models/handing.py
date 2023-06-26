@@ -237,7 +237,7 @@ class FlightData(object):
                     self.airport_list[flight_info['ap']].arrival_flight_list.append(self.node_cnt)
                     self.node_cnt += 1
         print('拉直航班个数', len(strengthen_flight))
-        # print(strengthen_flight)
+        print(strengthen_flight)
         print('联程航班个数', len(through_flight))
         # print(through_flight)
         print('单程航班个数', len(normal_flight))
