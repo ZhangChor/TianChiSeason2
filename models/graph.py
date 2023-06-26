@@ -141,6 +141,8 @@ class Graph(object):
                                                          alter_flight_avt + adjust_time, adjust_time)
                                 adjust_item_num += 1
                                 s.fall_in.append((current_node_num, adjust_time))
+                                if (nn, adjust_time) not in self.queue:
+                                    self.queue.append((nn, adjust_time))
                                 alter_flight_adjust[adjust_time] = adjust_info
 
                         if is_landing_forbid_t:  # 降落遭遇台风场景
@@ -157,6 +159,8 @@ class Graph(object):
                                                          alter_flight_avt + adjust_time, adjust_time)
                                 adjust_item_num += 1
                                 s.fall_in.append((current_node_num, adjust_time))
+                                if (nn, adjust_time) not in self.queue:
+                                    self.queue.append((nn, adjust_time))
                                 alter_flight_adjust[adjust_time] = adjust_info
 
                     # 机场关闭场景
@@ -192,6 +196,8 @@ class Graph(object):
                             adjust_info = AdjustItem(alter_flight_dpt + delay_time,
                                                      alter_flight_info['avt'] + delay_time, delay_time)
                             adjust_item_num += 1
+                            if (nn, delay_time) not in self.queue:
+                                self.queue.append((nn, delay_time))
                             if delay_time not in alter_flight_adjust.keys():
                                 alter_flight_adjust[delay_time] = adjust_info
                         else:  # 无法通过延误避免进入关闭机场
@@ -210,6 +216,8 @@ class Graph(object):
                         adjust_info = AdjustItem(alter_flight_dpt + delay_time, alter_flight_info['avt'] + delay_time,
                                                  delay_time)
                         adjust_item_num += 1
+                        if (nn, delay_time) not in self.queue:
+                            self.queue.append((nn, delay_time))
                         if delay_time not in alter_flight_adjust.keys():
                             alter_flight_adjust[delay_time] = adjust_info
                 # 尝试连接
@@ -238,9 +246,7 @@ class Graph(object):
 
                         if (current_node_num, current_adjust_info.adjust_time, cost) not in afa.pre:
                             afa.pre.append((current_node_num, current_adjust_info.adjust_time, cost))
-
                         if (nn, afa.adjust_time) not in current_adjust_info.suc:
                             current_adjust_info.suc.append((nn, afa.adjust_time))
-                        if (nn, afa.adjust_time) not in self.queue:
-                            self.queue.append((nn, afa.adjust_time))
+
         print(f'AdjustItem num: {adjust_item_num}')
