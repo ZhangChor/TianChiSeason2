@@ -1,5 +1,6 @@
 from models.handing import FlightData
 from models.graph import Graph
+from models.iterate import ColumnGeneration
 from datetime import datetime, timedelta
 from time import time as current_time
 
@@ -42,3 +43,7 @@ t0 = current_time()
 mega_graph.build_graph()
 t1 = current_time()
 print('构造时间', t1-t0)
+cg = ColumnGeneration(mega_graph)
+t2 = current_time()
+print('复制时间', t2-t1)
+

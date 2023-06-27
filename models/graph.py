@@ -1,3 +1,4 @@
+import models.utils
 from models.handing import FlightData
 from models.utils import AdjustItem, GraphNode, Airport, AirportClose, CloseScene
 from models.utils import SlotScene, AirportSlot, Slot, SlotItem
@@ -74,6 +75,7 @@ class Graph(object):
 
         zero_time = timedelta(minutes=0)
         adjust_item_num = 0
+        edge_num = 0
         while self.queue:
             print(len(self.queue), self.queue)
             current_node_num, adjust_time = self.queue.pop(0)
@@ -198,6 +200,7 @@ class Graph(object):
                             continue
 
                     # 正常连接
+                    # 延误后，可能中间机场又受台风影响了？该数据中没有出现这种情况，不再处理!
                     forbid_list = [is_landing_forbid_c, is_takeoff_forbid_c, is_landing_forbid_t, is_takeoff_forbid_t]
                     if not sum(forbid_list):
                         if turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
@@ -207,15 +210,34 @@ class Graph(object):
                         else:  # 无法连接
                             continue
 
+                        #
+                        # if alter_flight_info['attr'] == 'through':
+                        #     mid_airport: models.utils.MidstAirport = alter_flight_info['ma']
+                        #     if mid_airport.airport in self.typhoon_scene.keys():
+                        #         typhoon = self.typhoon_scene[mid_airport.airport]
+                        #         landing_forbid = typhoon.landing_forbid(mid_airport.arrival_time+delay_time)
+                        #         takeoff_forbid = typhoon.takeoff_forbid(mid_airport.departure_time+delay_time)
+                        #         if landing_forbid:
+                        #             print(f'num={adjust_item_num},fid={alter_flight_info["fids"]}禁止降落 {delay_time}')
+                        #         if takeoff_forbid:
+                        #             print(f'num={adjust_item_num},fid={alter_flight_info["fids"]}禁止起飞 {delay_time}')
+
                         adjust_info = AdjustItem(alter_flight_dpt + delay_time, alter_flight_info['avt'] + delay_time,
                                                  delay_time)
                         adjust_item_num += 1
                         if delay_time not in alter_flight_adjust.keys():
                             alter_flight_adjust[delay_time] = adjust_info
                 # 尝试连接
+
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
                     if turn_time <= afa.departure_time - current_time:
+                        # if nn in current_node.pres:
+                        #     break
+                        # if current_node_num not in alter_flight_node.pres:
+                        #     alter_flight_node.pres.add(current_node_num)
+                        #     for pre in current_node.pres:
+                        #         alter_flight_node.pres.add(pre)
                         if afa.adjust_time > zero_time:  # 延误
                             adjust_cost = afa.adjust_time.seconds / 3600 * 100
                             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
@@ -238,9 +260,10 @@ class Graph(object):
 
                         if (current_node_num, current_adjust_info.adjust_time, cost) not in afa.pre:
                             afa.pre.append((current_node_num, current_adjust_info.adjust_time, cost))
-
+                        edge_num += 1
                         if (nn, afa.adjust_time) not in current_adjust_info.suc:
                             current_adjust_info.suc.append((nn, afa.adjust_time))
                         if (nn, afa.adjust_time) not in self.queue:
                             self.queue.append((nn, afa.adjust_time))
         print(f'AdjustItem num: {adjust_item_num}')
+        print(f'Edge num: {edge_num}')

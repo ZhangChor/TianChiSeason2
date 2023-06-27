@@ -181,6 +181,7 @@ class GraphNode(object):
         self.key = key
         self.flight_info = flight_info
         self.adjust_list = dict()
+        # self.pres = set()  # 前驱航班
 
     def __repr__(self):
         return f'{self.flight_info["fids"]}: {self.flight_info["dp"]}-{self.flight_info["ap"]}'
