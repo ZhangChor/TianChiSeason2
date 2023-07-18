@@ -77,7 +77,7 @@ class Graph(object):
         adjust_item_num = 0
         edge_num = 0
         while self.queue:
-            print(len(self.queue), self.queue)
+            # print(len(self.queue), self.queue)
             current_node_num, adjust_time = self.queue.pop(0)
             current_node: GraphNode = node_list[current_node_num]
             current_flight_info: dict = current_node.flight_info
@@ -139,7 +139,7 @@ class Graph(object):
                             for s in available_slot:
                                 s: SlotItem
                                 adjust_time = s.start_time - alter_flight_dpt
-                                adjust_info = AdjustItem(alter_flight_dpt + adjust_time,
+                                adjust_info = AdjustItem(nn, alter_flight_dpt + adjust_time,
                                                          alter_flight_avt + adjust_time, adjust_time)
                                 adjust_item_num += 1
                                 s.fall_in.append((current_node_num, adjust_time))
@@ -155,7 +155,7 @@ class Graph(object):
                                 continue
                             for s in landing_fallin_slot:
                                 adjust_time = s.start_time - alter_flight_avt
-                                adjust_info = AdjustItem(alter_flight_dpt + adjust_time,
+                                adjust_info = AdjustItem(nn, alter_flight_dpt + adjust_time,
                                                          alter_flight_avt + adjust_time, adjust_time)
                                 adjust_item_num += 1
                                 s.fall_in.append((current_node_num, adjust_time))
@@ -191,7 +191,7 @@ class Graph(object):
                             delay_time = max(delay_time_by_takeoff, delay_time_by_landing)
                             print(
                                 f'node:{nn} cid:{alter_flight_info["cid"]} fids:{alter_flight_info["fids"]}受机场关闭影响，延误{delay_time}')
-                            adjust_info = AdjustItem(alter_flight_dpt + delay_time,
+                            adjust_info = AdjustItem(nn, alter_flight_dpt + delay_time,
                                                      alter_flight_info['avt'] + delay_time, delay_time)
                             adjust_item_num += 1
                             if delay_time not in alter_flight_adjust.keys():
@@ -222,8 +222,8 @@ class Graph(object):
                         #         if takeoff_forbid:
                         #             print(f'num={adjust_item_num},fid={alter_flight_info["fids"]}禁止起飞 {delay_time}')
 
-                        adjust_info = AdjustItem(alter_flight_dpt + delay_time, alter_flight_info['avt'] + delay_time,
-                                                 delay_time)
+                        adjust_info = AdjustItem(nn, alter_flight_dpt + delay_time,
+                                                 alter_flight_info['avt'] + delay_time, delay_time)
                         adjust_item_num += 1
                         if delay_time not in alter_flight_adjust.keys():
                             alter_flight_adjust[delay_time] = adjust_info
@@ -232,12 +232,12 @@ class Graph(object):
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
                     if turn_time <= afa.departure_time - current_time:
-                        # if nn in current_node.pres:
-                        #     break
-                        # if current_node_num not in alter_flight_node.pres:
-                        #     alter_flight_node.pres.add(current_node_num)
-                        #     for pre in current_node.pres:
-                        #         alter_flight_node.pres.add(pre)
+                        if nn in current_node.pres:
+                            print('出现了环...')
+                        if current_node_num not in alter_flight_node.pres:
+                            alter_flight_node.pres.add(current_node_num)
+                            for pre in current_node.pres:
+                                alter_flight_node.pres.add(pre)
                         if afa.adjust_time > zero_time:  # 延误
                             adjust_cost = afa.adjust_time.seconds / 3600 * 100
                             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']

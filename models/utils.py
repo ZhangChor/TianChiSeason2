@@ -155,7 +155,9 @@ class MidstAirport(object):
 
 
 class AdjustItem(object):
-    def __init__(self, departure_time: datetime, arrival_time: datetime, adjust_time=timedelta(minutes=0)):
+    def __init__(self, node_num: int, departure_time: datetime, arrival_time: datetime,
+                 adjust_time=timedelta(minutes=0)):
+        self.node_num = node_num
         self.adjust_time = adjust_time
         self.departure_time = departure_time
         self.arrival_time = arrival_time
@@ -171,6 +173,9 @@ class AdjustItem(object):
     def __repr__(self):
         return f'{self.adjust_time} {self.midst_airport.arrival_time} {self.midst_airport.departure_time}'
 
+    def mark(self):
+        return self.node_num, timedelta_minutes(self.adjust_time)
+
 
 class FlightInfo(dict):
     pass
@@ -181,10 +186,10 @@ class GraphNode(object):
         self.key = key
         self.flight_info = flight_info
         self.adjust_list = dict()
-        # self.pres = set()  # 前驱航班
+        self.pres = set()  # 前驱航班
 
-    def __repr__(self):
-        return f'{self.flight_info["fids"]}: {self.flight_info["dp"]}-{self.flight_info["ap"]}'
+    # def __repr__(self):
+    #     return f'{self.flight_info["fids"]}: {self.flight_info["dp"]}-{self.flight_info["ap"]}'
 
 
 class NodeList(dict):
@@ -211,12 +216,23 @@ class TipAirport(GraphNode):
 
 class CostInfo(object):
     def __init__(self, reduce_cost=0, exec_cost=0):
-        self.reduce_cost = 0
-        self.exec_cost = 0
-        self.best_pre = None
+        self.reduce_cost: float = 0
+        self.exec_cost: float = 0
+        self.best_pre: None or tuple = None
+        self.route: list = list()  # route = [(node num, adjust minute)]
+        self.pre_node: set = set()  # pre_node = {node num}
 
     def __repr__(self):
         return f'reduce cost: {self.reduce_cost}, best pre: {self.best_pre}'
+
+
+def timedelta_minutes(time: timedelta):
+    if time.days >= 0:
+        return time.seconds / 60
+    else:
+        full_time = timedelta(days=-2 * time.days)
+        positive_time = full_time - time
+        return -positive_time.seconds / 60
 
 
 if __name__ == '__main__':

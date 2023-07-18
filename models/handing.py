@@ -55,12 +55,13 @@ class FlightData(object):
         self.airline_aircraft_forbid = dict()
         for i in range(len(self._airline_aircraft_ct)):
             item = self._airline_aircraft_ct.iloc[i]
-            key = str(item['飞机ID'])
-            rkey = str(item['起飞机场']) + '-' + str(item['降落机场'])
+            key = item['飞机ID']
+            # daf = str(item['起飞机场']) + '-' + str(item['降落机场'])
+            daf = (item['起飞机场'], item['降落机场'])
             if key not in self.airline_aircraft_forbid.keys():
-                self.airline_aircraft_forbid[key] = dict()
-            forbid_map = self.airline_aircraft_forbid[key]
-            forbid_map[rkey] = True
+                self.airline_aircraft_forbid[key] = set()
+            forbid_set = self.airline_aircraft_forbid[key]
+            forbid_set.add(daf)
 
     def add_typhoon(self, typhoon_list: list):
         for typhoon in typhoon_list:
@@ -81,7 +82,7 @@ class FlightData(object):
                 adjust_time = si.start_time - dataframe['起飞时间'].iloc[-1]
             adjust_info = AdjustItem(departure_time=flight_info['dpt'] + adjust_time,
                                      arrival_time=flight_info['avt'] + adjust_time,
-                                     adjust_time=adjust_time)
+                                     adjust_time=adjust_time, node_num=graph_node.key)
             adjust_info.midst_airport = dataframe['降落机场'].iloc[0]
             adjust_info.midst_arrival_time = dataframe['降落时间'].iloc[0] + adjust_time
             adjust_info.midst_departure_time = dataframe['起飞时间'].iloc[-1] + adjust_time
@@ -128,7 +129,7 @@ class FlightData(object):
                     else:  # 恢复期开始前有航班
                         origin_flight['ap'], origin_flight['avt'] = end_frame['降落机场'], end_frame['降落时间']
                     departure_node = GraphNode(self.tip_node_cnt, origin_flight)
-                    origin_adjust = AdjustItem(self.duration_start, origin_flight['avt'], zero_time)
+                    origin_adjust = AdjustItem(self.tip_node_cnt, self.duration_start, origin_flight['avt'], zero_time)
                     departure_node.adjust_list[zero_time] = origin_adjust
                     self.graph_node_list[self.tip_node_cnt] = departure_node
                     self.tip_node_cnt -= 1
@@ -191,7 +192,8 @@ class FlightData(object):
                                         minutes=int(self.flying_time[straighten_flight_key]))
                                 else:
                                     straighten_flying_time = flight_info['avt'] - flight_info['dpt'] - turn_time
-                                straighten = AdjustItem(flight_info['dpt'], flight_info['dpt'] + straighten_flying_time)
+                                straighten = AdjustItem(self.node_cnt, flight_info['dpt'],
+                                                        flight_info['dpt'] + straighten_flying_time)
                                 straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
                                 # 拉直成本与因拉直而取消的旅客成本
                                 flight_info['cost'] = (750 + 4 * flight_info['tpn']) * flight_info['para']
@@ -247,6 +249,14 @@ class FlightData(object):
             if sum(ctp == 0) < len(self.aircraft_type_ls):
                 self.airport_stop_tp[v.airport_num] = ctp
 
+    def get_adjust_item(self, adjust_key: tuple):
+        node_num, adjust_minute = adjust_key
+        if node_num in self.graph_node_list.keys():
+            node: GraphNode = self.graph_node_list[node_num]
+            adjust_time = timedelta(minutes=adjust_minute)
+            if adjust_time in node.adjust_list.keys():
+                return node.adjust_list[adjust_time]
+        return None
 
 if __name__ == '__main__':
     pass
