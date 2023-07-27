@@ -63,17 +63,21 @@ class ColumnGeneration(object):
         :param graph_node_list_cp:
         :return:每个节点的邻接表
         """
-        top_order_ls = list()  # 记录该飞机所有可执行航班的拓扑排序
-        node2num_map = dict()
+        top_order_ls: list[tuple] = list()  # 记录该飞机所有可执行航班的拓扑排序
+        adjacency_table: list[AdjTabItem] = list()
+        node2num_map: dict[tuple[int, timedelta], int] = dict()
         node_cnt = 0
-        edge_ls = list()  # 记录该飞机可可执行航班之间的连接
-        adjacency_table = list()
+        edge_ls: list[tuple] = list()  # 记录该飞机可可执行航班之间的连接
+        edge2num_map: dict[tuple[int, int], int] = dict()
+        edge_cnt = 0
 
         init_mark = (-aircraft_num, timedelta(minutes=0))
         queue = [init_mark]
         node2num_map[init_mark] = node_cnt
         adjacency_table.append(AdjTabItem(num=node_cnt, info=init_mark))
         node_cnt += 1
+
+        destination_airport = list()  # 存放终点机场信息
         while queue:
             current_node_num, current_adjust_time = None, None
             current_graph_node, current_adjust_item = None, None
@@ -94,6 +98,8 @@ class ColumnGeneration(object):
                     current_graph_node, current_adjust_item = graph_node, adjust_item
                     break
             current_mark = (current_node_num, current_adjust_time)
+            if current_node_num < 0:
+                destination_airport.append(current_mark)
             top_order_ls.append(current_mark)
             queue.remove(current_mark)
             num = node2num_map[current_mark]
@@ -110,14 +116,18 @@ class ColumnGeneration(object):
                     node2num_map[suc_mark] = node_cnt
                     suc_adj_table_item = AdjTabItem(num=node_cnt, info=suc_mark)
                     adjacency_table.append(suc_adj_table_item)
-                    adj_table_item.suc.append(node_cnt)
-                    suc_adj_table_item.pre.append(num)
                     node_cnt += 1
+                suc_mark_num = node2num_map[suc_mark]
+                suc_adj_table_item = adjacency_table[suc_mark_num]
+                adj_table_item.suc.append(suc_mark_num)
+                suc_adj_table_item.pre.append(num)
 
                 if suc_mark not in queue:
                     queue.append(suc_mark)
-                edge = (current_mark, suc_mark)
+                edge = (num, node2num_map[suc_mark])
                 edge_ls.append(edge)
+                edge2num_map[edge] = edge_cnt
+                edge_cnt += 1
             # 删除当前复制节点的后继连接边与后继复制节点的前驱连接边
             while current_adjust_item.suc:
                 suc_mark = current_adjust_item.suc.pop(0)
@@ -133,7 +143,40 @@ class ColumnGeneration(object):
                         cost = pre_info_cost
                         break
                 suc_adjust_item_cp.pre.remove((current_node_num, current_adjust_time, cost))
-        return top_order_ls, adjacency_table, node2num_map
+        # 为每一架飞机增加一个虚拟的沉落节点，保证一架飞机只有一个起点和一个终点
+        sink_node = AdjTabItem(num=node_cnt, info=tuple())
+        adjacency_table.append(sink_node)
+        for da in destination_airport:
+            da_num = node2num_map[da]
+            da_adj_table_item = adjacency_table[da_num]
+            da_adj_table_item.suc.append(node_cnt)
+            sink_node.pre.append(da_num)
+            virtual_edge = (da_num, node_cnt)
+            edge_ls.append(virtual_edge)
+            edge2num_map[virtual_edge] = edge_cnt
+            edge_cnt += 1
+
+        self.aircraft_top_order[aircraft_num] = top_order_ls
+        return adjacency_table, node2num_map, edge_ls, edge2num_map
+    # todo 加入限制约束， 加入cost
+    def generate_association_matrix(self, adjacency_table: list, node2num_map: dict,
+                                    edge_ls: list, edge2num_map: dict):
+        edge_len = len(edge_ls)
+        ass_matrix: list[list[int]] = list()
+        for ati in adjacency_table:
+            ati: AdjTabItem
+            curr_num = ati.num
+            row = [0]*edge_len
+            for suc_num in ati.suc:
+                edge = (curr_num, suc_num)
+                edge_num = edge2num_map[edge]
+                row[edge_num] = 1
+            for pre_num in ati.pre:
+                edge = (pre_num, curr_num)
+                edge_num = edge2num_map[edge]
+                row[edge_num] = -1
+            ass_matrix.append(row)
+        return ass_matrix
 
     def find_shortest_path(self):
         pass

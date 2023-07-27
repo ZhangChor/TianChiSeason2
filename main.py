@@ -47,5 +47,6 @@ if __name__ == '__main__':
     t2 = current_time()
     print('复制时间', t2-t1)
     glc = cg.pre_traversal(3)
-    top_order_list, adj_table, node2num_map = cg.topological_ordering(3, glc)
+    adj_table, node2num_map, edge_ls, edge2num_map = cg.topological_ordering(3, glc)
+    acc_matrix = cg.generate_association_matrix(adj_table, node2num_map, edge_ls, edge2num_map)
 
