@@ -1,4 +1,3 @@
-import models.utils
 from models.handing import FlightData
 from models.utils import AdjustItem, GraphNode, Airport, AirportClose, CloseScene
 from models.utils import SlotScene, AirportSlot, Slot, SlotItem
@@ -51,8 +50,9 @@ class Graph(object):
         self.queue = []
         self.close_scene = CloseScene()
         self.typhoon_scene: dict = flight_data.typhoon_scene
-        self.slot_scene: SlotScene = self.flight_data.slot_scene
-        self.turn_time: dict = self.flight_data.turn_time
+        self.slot_scene: SlotScene = flight_data.slot_scene
+        self.turn_time: dict = flight_data.turn_time
+        self.advance_flight_node_nums = flight_data.advance_flight_node_nums
         for tip_node in flight_data.aircraft_list.values():
             self.queue.append((tip_node.key, tip_node.adjust_list[timedelta(0)].adjust_time))
         self.type_change_map = {'12': 0, '13': 2, '14': 4, '21': 0.5, '23': 2, '24': 4,
@@ -74,11 +74,12 @@ class Graph(object):
         max_lead_time: timedelta = self.flight_data.max_lead_time
 
         zero_time = timedelta(minutes=0)
-        adjust_item_num = 0
+        adjust_item_num = self.flight_data.adjust_item_cnt
         edge_num = 0
         while self.queue:
             # print(len(self.queue), self.queue)
-            current_node_num, adjust_time = self.queue.pop(0)
+            current_mark = self.queue.pop(0)
+            current_node_num, adjust_time = current_mark
             current_node: GraphNode = node_list[current_node_num]
             current_flight_info: dict = current_node.flight_info
             current_adjust_info: AdjustItem = current_node.adjust_list[adjust_time]
@@ -111,7 +112,7 @@ class Graph(object):
 
                     # 台风场景
                     if alter_flight_dp in self.typhoon_scene.keys():
-                        is_takeoff_forbid_t = self.typhoon_scene[alter_flight_dp].landing_forbid(alter_flight_dpt)
+                        is_takeoff_forbid_t = self.typhoon_scene[alter_flight_dp].takeoff_forbid(alter_flight_dpt)
                     else:
                         is_takeoff_forbid_t = False
                     if alter_flight_ap in self.typhoon_scene.keys():
@@ -127,6 +128,8 @@ class Graph(object):
                             earliest_advance_time = alter_flight_dpt - max_lead_time
                             advance_slot = takeoff_slots.midst_eq(earliest_advance_time,
                                                                   self.typhoon_scene[alter_flight_dp].start_time)
+                            if advance_slot:
+                                self.advance_flight_node_nums.add(nn)
                             # 尝试延误
                             # landing_slots = slots.landing_slot
                             latest_delayed_time = alter_flight_dpt + max_delay_time
@@ -210,7 +213,6 @@ class Graph(object):
                         else:  # 无法连接
                             continue
 
-                        #
                         # if alter_flight_info['attr'] == 'through':
                         #     mid_airport: models.utils.MidstAirport = alter_flight_info['ma']
                         #     if mid_airport.airport in self.typhoon_scene.keys():
@@ -232,8 +234,8 @@ class Graph(object):
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
                     if turn_time <= afa.departure_time - current_time:
-                        if nn in current_node.pres:
-                            print('出现了环...')
+                        # if nn in current_node.pres:
+                        #     print(f'出现了环...{nn}')
                         if current_node_num not in alter_flight_node.pres:
                             alter_flight_node.pres.add(current_node_num)
                             for pre in current_node.pres:
@@ -247,7 +249,8 @@ class Graph(object):
                             passenger_cost = 0
                             endorsement_cost = 0
 
-                        change_cost = change_aircraft_para(afa.departure_time) if current_flight_info['cid'] != alter_flight_info['cid'] else 0
+                        change_cost = change_aircraft_para(afa.departure_time) if current_flight_info['cid'] != \
+                                                                                  alter_flight_info['cid'] else 0
                         change_cost += model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
                                                          self.type_change_map)
 
@@ -255,7 +258,8 @@ class Graph(object):
                             passenger_cancel_num = current_flight_info['pn'] - alter_flight_info['sn']
                             passenger_cost += passenger_cancel_num * 4
 
-                        cost = (adjust_cost + passenger_cost + change_cost + endorsement_cost)*alter_flight_info['para']
+                        cost = (adjust_cost + passenger_cost + change_cost + endorsement_cost) * alter_flight_info[
+                            'para']
                         cost += afa.cost
 
                         if (current_node_num, current_adjust_info.adjust_time, cost) not in afa.pre:
@@ -265,5 +269,15 @@ class Graph(object):
                             current_adjust_info.suc.append((nn, afa.adjust_time))
                         if (nn, afa.adjust_time) not in self.queue:
                             self.queue.append((nn, afa.adjust_time))
+            # 尝试连接目的机场
+            if current_airport in self.flight_data.airport_stop_tp.keys():
+                destination_airport = self.flight_data.get_arrival_airport_graph_node(current_airport)
+                destination_mark = (destination_airport.key, zero_time)
+                if destination_mark not in current_adjust_info.suc:
+                    current_adjust_info.suc.append(destination_mark)
+                current_mark_pre = (current_node_num, adjust_time, 0)
+                if current_mark_pre not in destination_airport.adjust_list[zero_time].pre:
+                    destination_airport.adjust_list[zero_time].pre.append(current_mark_pre)
+
         print(f'AdjustItem num: {adjust_item_num}')
         print(f'Edge num: {edge_num}')

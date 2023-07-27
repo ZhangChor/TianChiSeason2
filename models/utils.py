@@ -1,4 +1,4 @@
-from pandas import DataFrame, Series
+from pandas import Series
 from datetime import timedelta, datetime
 
 
@@ -164,6 +164,7 @@ class AdjustItem(object):
         self.cancelled_passenger_num = 0
         self.delayed_passenger_num = 0
         self.cost = 0
+        self.available = set()  # 记录哪些飞机可以执行该调整航班
 
         self.midst_airport = MidstAirport(-1, None, None)
 
@@ -201,7 +202,7 @@ class Airport(object):
         self.airport_num = airport_num
         self.departure_flight_list = []
         self.arrival_flight_list = []
-        self.terminal_ctp = Series(0, index=ctp)
+        self.terminal_ctp = Series(0, index=ctp)  # 每种类型的飞机的最终停在该机场的数量
 
 
 class AirportList(dict):
@@ -216,8 +217,8 @@ class TipAirport(GraphNode):
 
 class CostInfo(object):
     def __init__(self, reduce_cost=0, exec_cost=0):
-        self.reduce_cost: float = 0
-        self.exec_cost: float = 0
+        self.reduce_cost: float = reduce_cost
+        self.exec_cost: float = exec_cost
         self.best_pre: None or tuple = None
         self.route: list = list()  # route = [(node num, adjust minute)]
         self.pre_node: set = set()  # pre_node = {node num}
@@ -226,13 +227,24 @@ class CostInfo(object):
         return f'reduce cost: {self.reduce_cost}, best pre: {self.best_pre}'
 
 
-def timedelta_minutes(time: timedelta):
+def timedelta_minutes(time: timedelta) -> float:
     if time.days >= 0:
         return time.seconds / 60
     else:
         full_time = timedelta(days=-2 * time.days)
         positive_time = full_time - time
         return -positive_time.seconds / 60
+
+
+class AdjTabItem(object):
+    def __init__(self, num: int, info: tuple):
+        self.num = num
+        self.info = info
+        self.pre = []
+        self.suc = []
+
+    def __repr__(self):
+        return f'{self.num: {self.pre}-{self.suc}}'
 
 
 if __name__ == '__main__':

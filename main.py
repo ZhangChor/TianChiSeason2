@@ -19,7 +19,7 @@ if __name__ == '__main__':
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = [4, 5, 6]
+    AIRCRAFT_NUM = [3, 4, 5]
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -46,5 +46,6 @@ if __name__ == '__main__':
     cg = ColumnGeneration(mega_graph)
     t2 = current_time()
     print('复制时间', t2-t1)
-    dp = cg.topological_ordering(3)
+    glc = cg.pre_traversal(3)
+    top_order_list, adj_table, node2num_map = cg.topological_ordering(3, glc)
 

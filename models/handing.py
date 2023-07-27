@@ -31,9 +31,11 @@ class FlightData(object):
         self._airport_ls = None
         self.aircraft_type_ls = None
         self.departure_airport_ls = None
-        self._arrival_airport_ls = None
+        self.arrival_airport_ls = None
         self.node_cnt = 0
+        self.adjust_item_cnt = 0
         self.tip_node_cnt = -1
+        self._aircraft_num = 0
         self.airport_list = dict()
         self.aircraft_list = dict()
         self.typhoon_scene = TyphoonScene()
@@ -41,6 +43,8 @@ class FlightData(object):
         self.schedule_groupby_departure = dict()
         self.graph_node_list = dict()
         self.airport_stop_tp = dict()  # 机场停机类型数
+        self._airport_num_to_graph_num_map = dict()
+        self.advance_flight_node_nums = set()
 
         self.flying_time = dict()
         for i in range(len(self._flying_time_data)):
@@ -70,8 +74,7 @@ class FlightData(object):
             self.typhoon_scene[airport_num] = a_typhoon
             self.slot_scene.add_scene(airport_num, a_typhoon)
 
-    @staticmethod
-    def adjust_through_flight(graph_node: GraphNode, slots: list, dataframe: pd.DataFrame, mark='takeoff'):
+    def adjust_through_flight(self, graph_node: GraphNode, slots: list, dataframe: pd.DataFrame, mark='takeoff'):
         if not slots:
             return graph_node
         flight_info = graph_node.flight_info
@@ -83,6 +86,7 @@ class FlightData(object):
             adjust_info = AdjustItem(departure_time=flight_info['dpt'] + adjust_time,
                                      arrival_time=flight_info['avt'] + adjust_time,
                                      adjust_time=adjust_time, node_num=graph_node.key)
+            self.adjust_item_cnt += 1
             adjust_info.midst_airport = dataframe['降落机场'].iloc[0]
             adjust_info.midst_arrival_time = dataframe['降落时间'].iloc[0] + adjust_time
             adjust_info.midst_departure_time = dataframe['起飞时间'].iloc[-1] + adjust_time
@@ -97,8 +101,10 @@ class FlightData(object):
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
         self.aircraft_type_ls = set(list(self.schedule['机型']))
         self.departure_airport_ls = set(list(self.schedule['起飞机场']))
-        self._arrival_airport_ls = set(list(self.schedule['降落机场']))
-        self._airport_ls = self.departure_airport_ls | self._arrival_airport_ls
+        self.arrival_airport_ls = set(list(self.schedule['降落机场']))
+        self._aircraft_num = len(set(list(self.schedule['飞机ID'])))
+        aircraft_num = -self._aircraft_num - 1
+        self._airport_ls = self.departure_airport_ls | self.arrival_airport_ls
         zero_time = timedelta(minutes=0)
 
         for ap in self._airport_ls:
@@ -130,6 +136,7 @@ class FlightData(object):
                         origin_flight['ap'], origin_flight['avt'] = end_frame['降落机场'], end_frame['降落时间']
                     departure_node = GraphNode(self.tip_node_cnt, origin_flight)
                     origin_adjust = AdjustItem(self.tip_node_cnt, self.duration_start, origin_flight['avt'], zero_time)
+                    self.adjust_item_cnt += 1
                     departure_node.adjust_list[zero_time] = origin_adjust
                     self.graph_node_list[self.tip_node_cnt] = departure_node
                     self.tip_node_cnt -= 1
@@ -194,6 +201,7 @@ class FlightData(object):
                                     straighten_flying_time = flight_info['avt'] - flight_info['dpt'] - turn_time
                                 straighten = AdjustItem(self.node_cnt, flight_info['dpt'],
                                                         flight_info['dpt'] + straighten_flying_time)
+                                self.adjust_item_cnt += 1
                                 straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
                                 # 拉直成本与因拉直而取消的旅客成本
                                 flight_info['cost'] = (750 + 4 * flight_info['tpn']) * flight_info['para']
@@ -230,6 +238,7 @@ class FlightData(object):
                                     takeoff_fallin_slot = slots.takeoff_slot.midst_eq(earliest_advance_time,
                                                                                       slot_end_time)
                                     graph_node = self.adjust_through_flight(graph_node, takeoff_fallin_slot, dataframe)
+                                    self.advance_flight_node_nums.add(self.node_cnt)
 
                         through_flight.append(graph_node.key)
                     else:
@@ -248,6 +257,19 @@ class FlightData(object):
             ctp = v.terminal_ctp
             if sum(ctp == 0) < len(self.aircraft_type_ls):
                 self.airport_stop_tp[v.airport_num] = ctp
+        for p, ctp in self.airport_stop_tp.items():
+            flight_info = dict()
+            flight_info['dp'], flight_info['ap'] = p, p
+            flight_info['dpt'] = self.duration_end
+            flight_info['ma'] = None
+            flight_info['cost'] = 0
+            graph_node = GraphNode(aircraft_num, flight_info)
+            graph_node.adjust_list[zero_time] = AdjustItem(aircraft_num, flight_info['dpt'] + self.min_turn_time,
+                                                           flight_info['dpt'] + self.min_turn_time, zero_time)
+            self.adjust_item_cnt += 1
+            self.graph_node_list[aircraft_num] = graph_node
+            self._airport_num_to_graph_num_map[p] = aircraft_num
+            aircraft_num -= 1
 
     def get_adjust_item(self, adjust_key: tuple):
         node_num, adjust_minute = adjust_key
@@ -257,6 +279,12 @@ class FlightData(object):
             if adjust_time in node.adjust_list.keys():
                 return node.adjust_list[adjust_time]
         return None
+
+    def get_arrival_airport_graph_node(self, arrival_airport_num: int) -> GraphNode:
+        if arrival_airport_num in self._airport_num_to_graph_num_map.keys():
+            graph_node_num = self._airport_num_to_graph_num_map[arrival_airport_num]
+            return self.graph_node_list[graph_node_num]
+
 
 if __name__ == '__main__':
     pass

@@ -1,7 +1,7 @@
 from models.graph import Graph
 from models.handing import FlightData
 from models.utils import timedelta_minutes
-from models.utils import CostInfo, GraphNode, AdjustItem
+from models.utils import GraphNode, AdjustItem, AdjTabItem
 from pickle import dumps, loads
 from datetime import timedelta
 from sys import maxsize
@@ -18,88 +18,122 @@ class ColumnGeneration(object):
         self.graph_node_list = self.flight_data.graph_node_list  # 可以用到的时候再复制
         self.aircraft_top_order = dict()  # 每架飞机的可执行航班的拓扑排序都不一定一样
 
-    def topological_ordering(self, aircraft_num: int):
-        """"对一架飞机的可执行航班进行拓扑排序；对使用到的边和节点进行统计；
-        判断图中是否出现了环，若出现了，记录下来，方便后续寻找最优路径"""
-
+    def pre_traversal(self, aircraft_num: int) -> dict:
+        """
+        将飞机id为aircraft_num的飞机能执行的航班，遍历并标记一遍
+        # 若一个航班可执行，则该航班的所有后继航班都可执行
+        :param aircraft_num:
+        :return: 返回一个飞机的可执行航班的复制表
+        """
         airline_forbid: set = self.flight_data.airline_aircraft_forbid[aircraft_num]
         graph_node_list_cp = dict()
-        dp_dist_list = dict()  # dp_dist_list = {(node_num: int, adjust_time: timedelta):CostInfo()}
-        top_order = list()  # 记录该飞机所有可执行航班的拓扑排序
-        delete_edge = list()  # 记录需要删除的边
         zero_time = timedelta(minutes=0)
-
+        self.graph_node_list[-aircraft_num].adjust_list[zero_time].available.add(aircraft_num)
         graph_node_list_cp[-aircraft_num] = deep_copy(self.graph_node_list[-aircraft_num])  # 用到的时候才复制相关信息
-
-        dp_dist_list[(-aircraft_num, zero_time)] = CostInfo()
         queue = [(-aircraft_num, zero_time)]
-
         while queue:
-            # 寻找入度为0的航班调整方案
-            for adjust_info in queue:
-                node_num, adjust_time = adjust_info
-                node_num: int
-                adjust_time: timedelta
-                adjust_item_copy = graph_node_list_cp[node_num].adjust_list[adjust_time]
-                if not adjust_item_copy.pre:
-                    break
-            current_mark = (node_num, adjust_time)
-            queue.remove(current_mark)
-            if (node_num, adjust_time) in top_order:
-                pass
-            top_order.append((node_num, adjust_time))
-            current_node: GraphNode = self.graph_node_list[node_num]
-            current_node_adjust_item: AdjustItem = current_node.adjust_list[adjust_time]
-            dp_dist = dp_dist_list[(node_num, adjust_time)]
+            current_mark = queue.pop(0)
+            current_node_num, current_adjust_time = current_mark
+            current_graph_node_cp: GraphNode = graph_node_list_cp[current_node_num]
+            current_adjust_item_cp: AdjustItem = current_graph_node_cp.adjust_list[current_adjust_time]
             # 加入后继
-            for suc_info in current_node_adjust_item.suc:
-                suc_node_num, suc_node_adjust_time = suc_info
-                suc_node_num: int
-                suc_node_adjust_time: timedelta
+            traversed_node_num = set()
+            for suc_mark in current_adjust_item_cp.suc:
+                suc_node_num, suc_adjust_time = suc_mark
                 suc_node: GraphNode = self.graph_node_list[suc_node_num]
-                daf = (suc_node.flight_info['dp'], suc_node.flight_info['ap'])
-                if daf in airline_forbid:
+                suc_flight_info = suc_node.flight_info
+                if (suc_flight_info['dp'], suc_flight_info['ap']) in airline_forbid:
                     continue
-                if suc_node_num not in graph_node_list_cp.keys():
-                    graph_node_list_cp[suc_node_num] = deep_copy(self.graph_node_list[suc_node_num])
-                suc_node_adjust_item = graph_node_list_cp[suc_node_num].adjust_list[suc_node_adjust_time]
-                for pre_info in suc_node_adjust_item.pre:
-                    pre_node_num, pre_adjust_time, pre_cost = pre_info
-                    if (pre_node_num, pre_adjust_time) == current_mark:
-                        suc_node_adjust_item.pre.remove(pre_info)
-                        adjust_item_copy.suc.remove(suc_info)
+                suc_adjust_item: AdjustItem = suc_node.adjust_list[suc_adjust_time]
+                suc_adjust_item.available.add(aircraft_num)
+                traversed_node_num.add(suc_node_num)
+                if suc_mark not in queue:
+                    queue.append(suc_mark)
+            # 深复制节点数据
+            for tnn in traversed_node_num:
+                if tnn not in graph_node_list_cp.keys():
+                    graph_node_list_cp[tnn] = deep_copy(self.graph_node_list[tnn])
+        return graph_node_list_cp
+
+    def topological_ordering(self, aircraft_num: int, graph_node_list_cp: dict):
+        """
+        对一架飞机的可执行航班进行拓扑排序
+        若一个航班可执行，但并不是它的所有前驱航班都可执行。找到前驱中在可执行航班表中的航班，及其对应的边
+        :param aircraft_num:
+        :param graph_node_list_cp:
+        :return:每个节点的邻接表
+        """
+        top_order_ls = list()  # 记录该飞机所有可执行航班的拓扑排序
+        node2num_map = dict()
+        node_cnt = 0
+        edge_ls = list()  # 记录该飞机可可执行航班之间的连接
+        adjacency_table = list()
+
+        init_mark = (-aircraft_num, timedelta(minutes=0))
+        queue = [init_mark]
+        node2num_map[init_mark] = node_cnt
+        adjacency_table.append(AdjTabItem(num=node_cnt, info=init_mark))
+        node_cnt += 1
+        while queue:
+            current_node_num, current_adjust_time = None, None
+            current_graph_node, current_adjust_item = None, None
+            for mk in queue:
+                node_num, adjust_time = mk
+                graph_node: GraphNode = graph_node_list_cp[node_num]
+                adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
+                included = 0
+                for pnl in adjust_item.pre:
+                    pnn, pnat, c = pnl
+                    pn: GraphNode = self.graph_node_list[pnn]
+                    pnai: AdjustItem = pn.adjust_list[pnat]
+                    if aircraft_num in pnai.available:
+                        included = 1
                         break
+                if not included:
+                    current_node_num, current_adjust_time = node_num, adjust_time
+                    current_graph_node, current_adjust_item = graph_node, adjust_item
+                    break
+            current_mark = (current_node_num, current_adjust_time)
+            top_order_ls.append(current_mark)
+            queue.remove(current_mark)
+            num = node2num_map[current_mark]
+            adj_table_item = adjacency_table[num]
 
-                queue.append(suc_info)
-                dp_dist_list[suc_info] = CostInfo()
-            # 寻找最优前驱
-            best_cost = maxsize
-            best_pre_node_num, best_pre_adjust_time = None, None
-            for pre_info in current_node_adjust_item.pre:
-                pre_node_num, pre_adjust_time, cost = pre_info
-                pre_node_num: int
-                pre_adjust_time: timedelta
-                cost: float
-                pre_node_mark = (pre_node_num, pre_adjust_time)
-                if pre_node_mark in dp_dist_list.keys() and cost < best_cost:
-                    best_pre_node_num, best_pre_adjust_time = pre_node_num, pre_adjust_time
-                    best_cost = cost
-            # todo 判断当前节点是否已经出现在最优前驱的路径中
-            best_pre_mark = (best_pre_node_num, best_pre_adjust_time)
-            if not best_pre_node_num is None:
-                dp_dist.best_pre, dp_dist.exec_cost = best_pre_mark, best_cost + dp_dist_list[best_pre_mark].exec_cost
-                best_pre_dp_dist: CostInfo = dp_dist_list[best_pre_mark]
-                if node_num in best_pre_dp_dist.pre_node:
-                    """"把之前出现过的航班及其后续航班记录下来，作为删除边，后面处理；把当前这个连接处理为不可连接的边"""
-                    pass
+            # 加入后继
+            for suc_mark in current_adjust_item.suc:
+                suc_node_num, suc_adjust_time = suc_mark
+                suc_node: GraphNode = self.graph_node_list[suc_node_num]
+                suc_adjust_item: AdjustItem = suc_node.adjust_list[suc_adjust_time]
+                if aircraft_num not in suc_adjust_item.available:
+                    continue
+                if suc_mark not in node2num_map.keys():
+                    node2num_map[suc_mark] = node_cnt
+                    suc_adj_table_item = AdjTabItem(num=node_cnt, info=suc_mark)
+                    adjacency_table.append(suc_adj_table_item)
+                    adj_table_item.suc.append(node_cnt)
+                    suc_adj_table_item.pre.append(num)
+                    node_cnt += 1
 
-                else:
-                    dp_dist.route = deep_copy(best_pre_dp_dist.route)
-                    dp_dist.route.append(current_mark)
-                    dp_dist.pre_node = deep_copy(best_pre_dp_dist.pre_node)
-                    dp_dist.pre_node.add(node_num)
-        self.aircraft_top_order[aircraft_num] = top_order
-        return dp_dist_list
+                if suc_mark not in queue:
+                    queue.append(suc_mark)
+                edge = (current_mark, suc_mark)
+                edge_ls.append(edge)
+            # 删除当前复制节点的后继连接边与后继复制节点的前驱连接边
+            while current_adjust_item.suc:
+                suc_mark = current_adjust_item.suc.pop(0)
+                suc_node_num, suc_adjust_time = suc_mark
+                suc_node_cp: GraphNode = graph_node_list_cp[suc_node_num]
+                suc_adjust_item_cp: AdjustItem = suc_node_cp.adjust_list[suc_adjust_time]
+                if aircraft_num not in suc_adjust_item_cp.available:
+                    continue
+                cost = 0
+                for pre_info in suc_adjust_item_cp.pre:
+                    pre_info_node_num, pre_info_adjust_time, pre_info_cost = pre_info
+                    if (pre_info_node_num, pre_info_adjust_time) == current_mark:
+                        cost = pre_info_cost
+                        break
+                suc_adjust_item_cp.pre.remove((current_node_num, current_adjust_time, cost))
+        return top_order_ls, adjacency_table, node2num_map
 
     def find_shortest_path(self):
         pass
