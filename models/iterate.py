@@ -53,6 +53,12 @@ class ColumnGeneration(object):
             for tnn in traversed_node_num:
                 if tnn not in graph_node_list_cp.keys():
                     graph_node_list_cp[tnn] = deep_copy(self.graph_node_list[tnn])
+                else:
+                    orig_graph_node = self.graph_node_list[tnn]
+                    for at, ati in graph_node_list_cp[tnn].adjust_list.items():
+                        ati: AdjustItem
+                        ati.available = deep_copy(orig_graph_node.adjust_list[at].available)
+
         return graph_node_list_cp
 
     def topological_ordering(self, aircraft_num: int, graph_node_list_cp: dict):
@@ -79,25 +85,30 @@ class ColumnGeneration(object):
 
         destination_airport = list()  # 存放终点机场信息
         while queue:
+            # print('队列信息', queue)
             current_node_num, current_adjust_time = None, None
             current_graph_node, current_adjust_item = None, None
             for mk in queue:
+                # print('-', mk)
                 node_num, adjust_time = mk
                 graph_node: GraphNode = graph_node_list_cp[node_num]
                 adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
                 included = 0
                 for pnl in adjust_item.pre:
                     pnn, pnat, c = pnl
+                    # print('--', pnl)
                     pn: GraphNode = self.graph_node_list[pnn]
                     pnai: AdjustItem = pn.adjust_list[pnat]
                     if aircraft_num in pnai.available:
                         included = 1
+                        # print('---', '有前驱未遍历')
                         break
                 if not included:
                     current_node_num, current_adjust_time = node_num, adjust_time
                     current_graph_node, current_adjust_item = graph_node, adjust_item
                     break
             current_mark = (current_node_num, current_adjust_time)
+            # print("*", "当前节点", current_mark, len(top_order_ls))
             if current_node_num < 0:
                 destination_airport.append(current_mark)
             top_order_ls.append(current_mark)
@@ -108,6 +119,8 @@ class ColumnGeneration(object):
             # 加入后继
             for suc_mark in current_adjust_item.suc:
                 suc_node_num, suc_adjust_time = suc_mark
+                if suc_node_num not in graph_node_list_cp.keys():  # 不满足航线飞机约束
+                    continue
                 suc_node: GraphNode = self.graph_node_list[suc_node_num]
                 suc_adjust_item: AdjustItem = suc_node.adjust_list[suc_adjust_time]
                 if aircraft_num not in suc_adjust_item.available:
@@ -132,6 +145,8 @@ class ColumnGeneration(object):
             while current_adjust_item.suc:
                 suc_mark = current_adjust_item.suc.pop(0)
                 suc_node_num, suc_adjust_time = suc_mark
+                if suc_node_num not in graph_node_list_cp.keys():  # 不满足航线飞机约束
+                    continue
                 suc_node_cp: GraphNode = graph_node_list_cp[suc_node_num]
                 suc_adjust_item_cp: AdjustItem = suc_node_cp.adjust_list[suc_adjust_time]
                 if aircraft_num not in suc_adjust_item_cp.available:

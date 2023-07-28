@@ -79,10 +79,10 @@ class Graph(object):
         while self.queue:
             # print(len(self.queue), self.queue)
             current_mark = self.queue.pop(0)
-            current_node_num, adjust_time = current_mark
+            current_node_num, current_adjust_time = current_mark
             current_node: GraphNode = node_list[current_node_num]
             current_flight_info: dict = current_node.flight_info
-            current_adjust_info: AdjustItem = current_node.adjust_list[adjust_time]
+            current_adjust_info: AdjustItem = current_node.adjust_list[current_adjust_time]
             current_airport = current_flight_info['ap']
             current_time = current_adjust_info.arrival_time
             alter_flights: Airport = airport_list[current_airport]
@@ -275,7 +275,7 @@ class Graph(object):
                 destination_mark = (destination_airport.key, zero_time)
                 if destination_mark not in current_adjust_info.suc:
                     current_adjust_info.suc.append(destination_mark)
-                current_mark_pre = (current_node_num, adjust_time, 0)
+                current_mark_pre = (current_node_num, current_adjust_time, 0)
                 if current_mark_pre not in destination_airport.adjust_list[zero_time].pre:
                     destination_airport.adjust_list[zero_time].pre.append(current_mark_pre)
 
