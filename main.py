@@ -19,7 +19,7 @@ if __name__ == '__main__':
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = 20
+    AIRCRAFT_NUM = [3, 4, 5]
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -44,13 +44,10 @@ if __name__ == '__main__':
     t1 = current_time()
     print('构造时间', t1-t0)
     cg = ColumnGeneration(mega_graph)
-    t2 = current_time()
-    print('复制时间', t2-t1)
-    for i in range(AIRCRAFT_NUM):
-        t3 = current_time()
-        glc = cg.pre_traversal(i+1)
-        adj_table, node2num_map, edge_ls, edge2num_map = cg.topological_ordering(i+1, glc)
-        print('node num', len(adj_table), 'edge num', len(edge_ls))
-        acc_matrix = cg.generate_association_matrix(adj_table, node2num_map, edge_ls, edge2num_map)
-        t4 = current_time()
-        print('预遍历，拓扑排序和产生关联矩阵时间', t4-t3)
+    # for i in range(AIRCRAFT_NUM):
+    t3 = current_time()
+    glc = cg.pre_traversal(3)
+    cg.topological_ordering(3, glc)
+    acc_matrix = cg.generate_association_matrix(3)
+    t4 = current_time()
+    print('预遍历，拓扑排序和产生关联矩阵时间', t4-t3)

@@ -44,7 +44,7 @@ class FlightData(object):
         self.graph_node_list = dict()
         self.airport_stop_tp = dict()  # 机场停机类型数
         self._airport_num_to_graph_num_map = dict()
-        self.advance_flight_node_nums = set()
+        self.advance_flight_node_nums = set()  # 统计能够进行提前的航班的node num
 
         self.flying_time = dict()
         for i in range(len(self._flying_time_data)):
@@ -95,8 +95,8 @@ class FlightData(object):
         return graph_node
 
     def selection_data(self, aircraft_id: int):
-        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
-        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
+        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
+        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
         self.aircraft_type_ls = set(list(self.schedule['机型']))

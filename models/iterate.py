@@ -17,6 +17,13 @@ class ColumnGeneration(object):
         self.flight_data: FlightData = graph.flight_data
         self.graph_node_list = self.flight_data.graph_node_list  # 可以用到的时候再复制
         self.aircraft_top_order = dict()  # 每架飞机的可执行航班的拓扑排序都不一定一样
+        self.adjacency_table_list = dict()  # 储存每架飞机的邻接表
+        self.node2num_map_list = dict()  # 储存每架飞机可执行航班到在邻接矩阵中的行的指标
+        self.edge_ls_list = dict()  # 储存每架飞机可执行边
+        self.edge2num_map_list = dict()  # 储存每架飞机可执行边在邻接矩阵中的列的指标
+
+        self.ass_matrix_list = dict()  # 储存每架飞机的邻接矩阵
+        self.edge_cost_list = dict()  # 储存每架飞机边的执行花费
 
     def pre_traversal(self, aircraft_num: int) -> dict:
         """
@@ -73,7 +80,8 @@ class ColumnGeneration(object):
         adjacency_table: list[AdjTabItem] = list()
         node2num_map: dict[tuple[int, timedelta], int] = dict()
         node_cnt = 0
-        edge_ls: list[tuple] = list()  # 记录该飞机可可执行航班之间的连接
+        edge_ls: list[tuple] = list()  # 记录该飞机可执行航班之间的连接
+        edge_cost_ls = list()  # 记录该飞机可执行航班的执行成本，连接的成本为edge后继航班连接前驱航班的成本
         edge2num_map: dict[tuple[int, int], int] = dict()
         edge_cnt = 0
 
@@ -85,30 +93,25 @@ class ColumnGeneration(object):
 
         destination_airport = list()  # 存放终点机场信息
         while queue:
-            # print('队列信息', queue)
             current_node_num, current_adjust_time = None, None
             current_graph_node, current_adjust_item = None, None
             for mk in queue:
-                # print('-', mk)
                 node_num, adjust_time = mk
                 graph_node: GraphNode = graph_node_list_cp[node_num]
                 adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
                 included = 0
                 for pnl in adjust_item.pre:
                     pnn, pnat, c = pnl
-                    # print('--', pnl)
                     pn: GraphNode = self.graph_node_list[pnn]
                     pnai: AdjustItem = pn.adjust_list[pnat]
                     if aircraft_num in pnai.available:
                         included = 1
-                        # print('---', '有前驱未遍历')
                         break
                 if not included:
                     current_node_num, current_adjust_time = node_num, adjust_time
                     current_graph_node, current_adjust_item = graph_node, adjust_item
                     break
             current_mark = (current_node_num, current_adjust_time)
-            # print("*", "当前节点", current_mark, len(top_order_ls))
             if current_node_num < 0:
                 destination_airport.append(current_mark)
             top_order_ls.append(current_mark)
@@ -158,6 +161,7 @@ class ColumnGeneration(object):
                         cost = pre_info_cost
                         break
                 suc_adjust_item_cp.pre.remove((current_node_num, current_adjust_time, cost))
+                edge_cost_ls.append(cost)
         # 为每一架飞机增加一个虚拟的沉落节点，保证一架飞机只有一个起点和一个终点
         sink_node = AdjTabItem(num=node_cnt, info=tuple())
         adjacency_table.append(sink_node)
@@ -168,14 +172,23 @@ class ColumnGeneration(object):
             sink_node.pre.append(da_num)
             virtual_edge = (da_num, node_cnt)
             edge_ls.append(virtual_edge)
+            edge_cost_ls.append(0)
             edge2num_map[virtual_edge] = edge_cnt
             edge_cnt += 1
 
         self.aircraft_top_order[aircraft_num] = top_order_ls
-        return adjacency_table, node2num_map, edge_ls, edge2num_map
-    # todo 加入限制约束， 加入cost
-    def generate_association_matrix(self, adjacency_table: list, node2num_map: dict,
-                                    edge_ls: list, edge2num_map: dict):
+        self.edge_cost_list[aircraft_num] = edge_cost_ls
+
+        self.adjacency_table_list[aircraft_num] = adjacency_table
+        self.node2num_map_list[aircraft_num] = node2num_map
+        self.edge_ls_list[aircraft_num] = edge_ls
+        self.edge2num_map_list[aircraft_num] = edge2num_map
+
+    # todo 加入限制约束，增加一个统计邻接矩阵行的map
+    def generate_association_matrix(self, aircraft_num: int):
+        adjacency_table = self.adjacency_table_list[aircraft_num]
+        edge_ls = self.edge_ls_list[aircraft_num]
+        edge2num_map = self.edge2num_map_list[aircraft_num]
         edge_len = len(edge_ls)
         ass_matrix: list[list[int]] = list()
         for ati in adjacency_table:
@@ -191,6 +204,7 @@ class ColumnGeneration(object):
                 edge_num = edge2num_map[edge]
                 row[edge_num] = -1
             ass_matrix.append(row)
+        self.ass_matrix_list[aircraft_num] = ass_matrix
         return ass_matrix
 
     def find_shortest_path(self):
