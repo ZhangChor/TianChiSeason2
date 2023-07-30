@@ -95,8 +95,8 @@ class FlightData(object):
         return graph_node
 
     def selection_data(self, aircraft_id: int):
-        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
-        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
+        # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
+        self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
         self.aircraft_type_ls = set(list(self.schedule['机型']))

@@ -24,6 +24,8 @@ class ColumnGeneration(object):
 
         self.ass_matrix_list = dict()  # 储存每架飞机的邻接矩阵
         self.edge_cost_list = dict()  # 储存每架飞机边的执行花费
+        self.node_attr_list = dict()  # 存储每架飞机的node的出入度情况
+        self.graph_node_index_list = dict()
 
     def pre_traversal(self, aircraft_num: int) -> dict:
         """
@@ -85,6 +87,8 @@ class ColumnGeneration(object):
         edge2num_map: dict[tuple[int, int], int] = dict()
         edge_cnt = 0
 
+        graph_node_index: dict[int, list] = dict()
+
         init_mark = (-aircraft_num, timedelta(minutes=0))
         queue = [init_mark]
         node2num_map[init_mark] = node_cnt
@@ -131,6 +135,10 @@ class ColumnGeneration(object):
                 if suc_mark not in node2num_map.keys():
                     node2num_map[suc_mark] = node_cnt
                     suc_adj_table_item = AdjTabItem(num=node_cnt, info=suc_mark)
+                    if suc_node_num not in graph_node_index.keys():
+                        graph_node_index[suc_node_num] = [node_cnt]
+                    else:
+                        graph_node_index[suc_node_num].append(node_cnt)
                     adjacency_table.append(suc_adj_table_item)
                     node_cnt += 1
                 suc_mark_num = node2num_map[suc_mark]
@@ -184,12 +192,17 @@ class ColumnGeneration(object):
         self.edge_ls_list[aircraft_num] = edge_ls
         self.edge2num_map_list[aircraft_num] = edge2num_map
 
-    # todo 加入限制约束，增加一个统计邻接矩阵行的map
+        self.graph_node_index_list[aircraft_num] = graph_node_index
+
+    # todo 加入限制约束
     def generate_association_matrix(self, aircraft_num: int):
         adjacency_table = self.adjacency_table_list[aircraft_num]
-        edge_ls = self.edge_ls_list[aircraft_num]
         edge2num_map = self.edge2num_map_list[aircraft_num]
-        edge_len = len(edge_ls)
+        edge_len = len(edge2num_map)
+        node_len = len(adjacency_table)
+        node_arr = [0]*node_len
+        node_arr[0] = 1
+        node_arr[-1] = -1
         ass_matrix: list[list[int]] = list()
         for ati in adjacency_table:
             ati: AdjTabItem
@@ -205,6 +218,7 @@ class ColumnGeneration(object):
                 row[edge_num] = -1
             ass_matrix.append(row)
         self.ass_matrix_list[aircraft_num] = ass_matrix
+        self.node_attr_list[aircraft_num] = node_arr
         return ass_matrix
 
     def find_shortest_path(self):

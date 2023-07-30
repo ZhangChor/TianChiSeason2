@@ -3,6 +3,7 @@ import sys
 
 sys.path.append(r'/home/zc/PathModel3')
 from docplex.mp.model import Model
+from models.utils import AdjTabItem
 
 
 class CplexSolver(object):
@@ -79,6 +80,66 @@ class CplexSolver(object):
     @property
     def optimal(self) -> float:
         return self._solver.objective_value
+
+
+class ShortestPath(object):
+    def __init__(self, ass_matrix: list[list], node_attr: list, edge_cost: list, relaxation=True):
+        self.node_num = len(node_attr)  # number of node
+        self.edge_num = len(edge_cost)  # number of edge
+        self._var_name_list = [f'e{j}' for j in range(self.edge_num)]
+        self.sp = Model(name="shortest path problem")
+        if relaxation:
+            self.var_list = self.sp.continuous_var_list(self._var_name_list, name='x')
+        else:
+            self.var_list = self.sp.binary_var_list(self._var_name_list, name='x')
+        for i in range(self.node_num):
+            row = ass_matrix[i]
+            self.sp.add_constraint(self.sp.sum(row[j] * self.var_list[j] for j in range(self.edge_num)) == node_attr[i],
+                                   ctname=f'node{i}')
+        self.sp.min(self.sp.sum(edge_cost[j] * self.var_list[j] for j in range(self.node_num)))
+        self.result = None
+
+    def add_mutex_constraint(self, advance_flight_node_nums: list, graph_node_index: dict):
+        k = 0
+        for af_node_num in advance_flight_node_nums:
+            if af_node_num in graph_node_index.keys():
+                node_ct = [0]*self.edge_num
+                indexs = graph_node_index[af_node_num]
+                for i in indexs:
+                    node_ct[i] = 1
+                self.sp.add_constraint(self.sp.sum(node_ct[j] * self.var_list[j] for j in range(self.edge_num)) <= 1,
+                                       ctname=f'cnode{k}')
+                k += 1
+
+    def print_info(self):
+        # for j in range(self.node_num):
+        #     print(self.sp.get_constraint_by_name('node%s' % j))
+        #
+        # # 输出目标函数
+        # print("Objective:")
+        # print(self.sp.get_objective_expr())
+        self.sp.print_information()  # 输出模型信息
+
+    def solve(self):
+        self.result = self.sp.solve()
+        if not self.result:
+            self.result = self.sp.solve(log_output=True)  # 用来检查是否存在不可行约束
+            print("当前问题无解")
+            return None
+
+    @property
+    def solution(self) -> list:
+        return [self.result.get_value('x_' + s) for s in self._var_name_list]
+
+    @property
+    def optimal(self) -> float:
+        return self.sp.objective_value
+
+    def is_int(self) -> bool:
+        for i in self.solution:
+            if i != int(i):
+                return False
+        return True
 
 
 if __name__ == '__main__':
