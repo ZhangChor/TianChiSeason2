@@ -3,7 +3,6 @@ import sys
 
 sys.path.append(r'/home/zc/PathModel3')
 from docplex.mp.model import Model
-from models.utils import AdjTabItem
 
 
 class CplexSolver(object):
@@ -103,7 +102,7 @@ class ShortestPath(object):
         k = 0
         for af_node_num in advance_flight_node_nums:
             if af_node_num in graph_node_index.keys():
-                node_ct = [0]*self.edge_num
+                node_ct = [0] * self.edge_num
                 indexs = graph_node_index[af_node_num]
                 for i in indexs:
                     node_ct[i] = 1

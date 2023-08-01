@@ -1,8 +1,10 @@
-import pandas as pd
 from datetime import datetime, timedelta
+
+import pandas as pd
 from dateutil.parser import parse as datetime_parse
+
+from models.utils import Airport, GraphNode, AdjustItem
 from models.utils import Typhoon, TyphoonScene, SlotScene, MidstAirport
-from models.utils import Airport, TipAirport, GraphNode, AdjustItem
 
 
 class FlightData(object):

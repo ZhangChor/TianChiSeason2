@@ -1,10 +1,12 @@
-from models.graph import Graph
-from models.handing import FlightData
-from models.utils import timedelta_minutes
-from models.utils import GraphNode, AdjustItem, AdjTabItem
 from pickle import dumps, loads
 from datetime import timedelta
 from sys import maxsize
+
+from models.graph import Graph
+from models.handing import FlightData
+from models.utils import timedelta_minutes
+from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotItem
+from models.cplex_solver import ShortestPath
 
 
 def deep_copy(data):
@@ -26,6 +28,10 @@ class ColumnGeneration(object):
         self.edge_cost_list = dict()  # 储存每架飞机边的执行花费
         self.node_attr_list = dict()  # 存储每架飞机的node的出入度情况
         self.graph_node_index_list = dict()
+
+        self.exceeded_slots = list()  # 储存落入数量超过容量的slot信息
+        self.exceeded_slots_capacity = list()  # 储存落入数量超过容量的slot的容量
+        self.exceeded_slots_map = dict()  # 储存落入数据超过容量的slot的标号
 
     def pre_traversal(self, aircraft_num: int) -> dict:
         """
@@ -194,20 +200,19 @@ class ColumnGeneration(object):
 
         self.graph_node_index_list[aircraft_num] = graph_node_index
 
-    # todo 加入限制约束
     def generate_association_matrix(self, aircraft_num: int):
         adjacency_table = self.adjacency_table_list[aircraft_num]
         edge2num_map = self.edge2num_map_list[aircraft_num]
         edge_len = len(edge2num_map)
         node_len = len(adjacency_table)
-        node_arr = [0]*node_len
+        node_arr = [0] * node_len
         node_arr[0] = 1
         node_arr[-1] = -1
         ass_matrix: list[list[int]] = list()
         for ati in adjacency_table:
             ati: AdjTabItem
             curr_num = ati.num
-            row = [0]*edge_len
+            row = [0] * edge_len
             for suc_num in ati.suc:
                 edge = (curr_num, suc_num)
                 edge_num = edge2num_map[edge]
@@ -221,5 +226,43 @@ class ColumnGeneration(object):
         self.node_attr_list[aircraft_num] = node_arr
         return ass_matrix
 
-    def find_shortest_path(self):
-        pass
+    def generate_dep_arr_slot_matrix(self):
+        # 遍历SoltScene，寻找落入数量大于容量的slot，进行编号
+        slot_scene = self.flight_data.slot_scene
+        exceeded_slots_num = 0
+        for airport_num, airport_slot_ls in slot_scene.scene_list.items():
+            airport_slot: AirportSlot = airport_slot_ls[0]
+            for sl in airport_slot.takeoff_slot.slot_ls:
+                sl: SlotItem
+                if len(sl.fall_in) > sl.capacity:
+                    slot_mark = (airport_num, 'takeoff', sl.start_time)
+                    self.exceeded_slots.append(slot_mark)
+                    self.exceeded_slots_capacity.append(sl.capacity)
+                    self.exceeded_slots_map[slot_mark] = exceeded_slots_num
+                    exceeded_slots_num += 1
+            for sl in airport_slot.landing_slot.slot_ls:
+                sl: SlotItem
+                if len(sl.fall_in) > sl.capacity:
+                    slot_mark = (airport_num, 'landing', sl.start_time)
+                    self.exceeded_slots.append(slot_mark)
+                    self.exceeded_slots_capacity.append(sl.capacity)
+                    self.exceeded_slots_map[slot_mark] = exceeded_slots_num
+                    exceeded_slots_num += 1
+
+    def run(self):
+        # 可以对任意飞机ID开始计算
+        self.generate_dep_arr_slot_matrix()
+
+        aircraft_num = 3
+        graph_node_list_cp = self.pre_traversal(aircraft_num)
+        self.topological_ordering(aircraft_num, graph_node_list_cp)
+        self.generate_association_matrix(aircraft_num)
+        # 可并行
+        sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
+                                 self.edge_cost_list[aircraft_num])
+        sp_solver.add_mutex_constraint(self.flight_data.advance_flight_node_nums,
+                                       self.graph_node_index_list[aircraft_num])
+        sp_solver.solve()
+        print('最优解', sp_solver.optimal)
+        print('是否整数解', sp_solver.is_int())
+        print(sum(sp_solver.solution))

@@ -1,8 +1,9 @@
+from datetime import datetime, timedelta
+from time import time as current_time
+
 from models.handing import FlightData
 from models.graph import Graph
 from models.iterate import ColumnGeneration
-from datetime import datetime, timedelta
-from time import time as current_time
 from models.cplex_solver import ShortestPath
 
 if __name__ == '__main__':
@@ -14,13 +15,13 @@ if __name__ == '__main__':
     max_domestic_delay = timedelta(hours=24)
     max_foreign_delay = timedelta(hours=36)
 
-    split_time = timedelta(minutes=30)
-    slot_capacity = 12
+    split_time = timedelta(minutes=20)
+    slot_capacity = 8
 
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = 10
+    AIRCRAFT_NUM = 20
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -45,20 +46,7 @@ if __name__ == '__main__':
     t1 = current_time()
     print('构造时间', t1-t0)
     cg = ColumnGeneration(mega_graph)
-    # for i in range(AIRCRAFT_NUM):
-    t3 = current_time()
-    glc = cg.pre_traversal(3)
-    cg.topological_ordering(3, glc)
-    acc_matrix = cg.generate_association_matrix(3)
-    t4 = current_time()
-    print('预遍历，拓扑排序和产生关联矩阵时间', t4-t3)
-    sp = ShortestPath(cg.ass_matrix_list[3], cg.node_attr_list[3], cg.edge_cost_list[3], relaxation=False)
-    sp.add_mutex_constraint(flight_data.advance_flight_node_nums, cg.graph_node_index_list[3])
-    sp.solve()
-    t5 = current_time()
-    print('求解最短路径时间', t5-t4)
-    sp.print_info()
-    print('最优解', sp.optimal)
-    print('是否整数解', sp.is_int())
-    print(sum(sp.solution))
+    cg.run()
+
+
 

@@ -79,6 +79,9 @@ class SlotItem(object):
     def __lt__(self, other):
         return self.start_time < other.start_time
 
+    def __eq__(self, other):
+        return self.start_time == other.start_time
+
     def __repr__(self):
         return f'{self.start_time}-{self.end_time}:{self.capacity}'
 
@@ -86,9 +89,13 @@ class SlotItem(object):
 class Slot(object):
     def __init__(self, split: timedelta):
         self.split = split
-        self.slot_ls = list()
+        self.slot_ls: list[SlotItem] = list()
+        self.start_time = None
+        self.end_time = None
 
     def add_slot(self, start_time: datetime, end_time: datetime, slot_capacity: int):
+        self.start_time = start_time
+        self.end_time = end_time
         point_start = start_time
         while point_start < end_time:
             point_end = point_start + self.split
@@ -102,6 +109,13 @@ class Slot(object):
             if start_time <= si.start_time < end_time:
                 ls.append(si)
         return ls
+
+    def __getitem__(self, item: datetime) -> SlotItem:
+        if self.start_time <= item <= self.end_time:
+            for sl in self.slot_ls:
+                if sl.start_time == item:
+                    return sl
+        raise IndexError("list index out of range")
 
 
 class AirportSlot(object):
