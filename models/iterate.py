@@ -1,11 +1,11 @@
 from pickle import dumps, loads
 from datetime import timedelta
-from sys import maxsize
 
 from models.graph import Graph
 from models.handing import FlightData
 from models.utils import timedelta_minutes
 from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotItem
+from models.utils import AirportParkingScene, AirfieldStoppages
 from models.cplex_solver import ShortestPath
 
 
@@ -18,6 +18,7 @@ class ColumnGeneration(object):
         self.graph: Graph = graph
         self.flight_data: FlightData = graph.flight_data
         self.graph_node_list = self.flight_data.graph_node_list  # 可以用到的时候再复制
+        self.airport_parking_scene = AirportParkingScene()
         self.aircraft_top_order = dict()  # 每架飞机的可执行航班的拓扑排序都不一定一样
         self.adjacency_table_list = dict()  # 储存每架飞机的邻接表
         self.node2num_map_list = dict()  # 储存每架飞机可执行航班到在邻接矩阵中的行的指标
@@ -32,6 +33,15 @@ class ColumnGeneration(object):
         self.exceeded_slots = list()  # 储存落入数量超过容量的slot信息
         self.exceeded_slots_capacity = list()  # 储存落入数量超过容量的slot的容量
         self.exceeded_slots_map = dict()  # 储存落入数据超过容量的slot的标号
+
+        self.terminal_airport_list = list()  # 储存在恢复期结束时，需要有不同数量的相应类型的飞机
+        self.terminal_airport_needs_list = list()  # 储存在恢复期结束时，所需相应类型的飞机的数量
+        self.terminal_airport_index_map = dict()  # 存储终点机场的编号
+
+    def add_airport_parking(self, airport_parking_constraint_list: list):
+        for item in airport_parking_constraint_list:
+            airport_num, start_time, end_time, capacity = item
+            self.airport_parking_scene[airport_num] = AirfieldStoppages(airport_num, start_time, end_time, capacity)
 
     def pre_traversal(self, aircraft_num: int) -> dict:
         """
@@ -249,10 +259,24 @@ class ColumnGeneration(object):
                     self.exceeded_slots_map[slot_mark] = exceeded_slots_num
                     exceeded_slots_num += 1
 
+    def generate_terminal_airport_aircraft_type_matrix(self):
+        airport_stop_tp = self.flight_data.airport_stop_tp
+        aircraft_type_ls = self.flight_data.aircraft_type_ls
+        terminal_num = 0
+        for airport_num, type_info in airport_stop_tp.items():
+            for ctp in aircraft_type_ls:
+                needs = type_info[ctp]
+                if needs > 0:
+                    terminal_airport_mark = (airport_num, ctp)
+                    self.terminal_airport_list.append(terminal_airport_mark)
+                    self.terminal_airport_needs_list.append(needs)
+                    self.terminal_airport_index_map[terminal_airport_mark] = terminal_num
+                    terminal_num += 1
+
     def run(self):
         # 可以对任意飞机ID开始计算
         self.generate_dep_arr_slot_matrix()
-
+        self.generate_terminal_airport_aircraft_type_matrix()
         aircraft_num = 3
         graph_node_list_cp = self.pre_traversal(aircraft_num)
         self.topological_ordering(aircraft_num, graph_node_list_cp)

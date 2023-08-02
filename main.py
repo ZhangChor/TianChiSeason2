@@ -46,6 +46,12 @@ if __name__ == '__main__':
     t1 = current_time()
     print('构造时间', t1-t0)
     cg = ColumnGeneration(mega_graph)
+    airport_parking_constraint_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
+                                       (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
+                                       (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 0),
+                                       (25, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 11),
+                                       (57, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 7)]
+    cg.add_airport_parking(airport_parking_constraint_list)
     cg.run()
 
 

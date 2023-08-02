@@ -153,6 +153,18 @@ class SlotScene(SceneList):
         super().add_scene(airport, airport_slot)
 
 
+class AirfieldStoppages(object):
+    def __init__(self, airport_num: int, start_time: datetime, end_time: datetime, capacity: int):
+        self.airport_num = airport_num
+        self.start_time = start_time
+        self.end_time = end_time
+        self.capacity = capacity
+
+
+class AirportParkingScene(dict):
+    pass
+
+
 class AirportStops(object):
     def __init__(self, start_time: datetime, end_time: datetime, airport_num: int, capacity: int):
         self.start_time = start_time
