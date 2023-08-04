@@ -83,7 +83,7 @@ class SlotItem(object):
         return self.start_time == other.start_time
 
     def __repr__(self):
-        return f'{self.start_time}-{self.end_time}:{self.capacity}'
+        return f'{self.start_time}~{self.end_time}:{self.capacity}'
 
 
 class Slot(object):

@@ -95,7 +95,7 @@ class ShortestPath(object):
             row = ass_matrix[i]
             self.sp.add_constraint(self.sp.sum(row[j] * self.var_list[j] for j in range(self.edge_num)) == node_attr[i],
                                    ctname=f'node{i}')
-        self.sp.min(self.sp.sum(edge_cost[j] * self.var_list[j] for j in range(self.node_num)))
+        self.sp.minimize(self.sp.sum(edge_cost[j] * self.var_list[j] for j in range(self.edge_num)))
         self.result = None
 
     def add_mutex_constraint(self, advance_flight_node_nums: list, graph_node_index: dict):
@@ -111,12 +111,12 @@ class ShortestPath(object):
                 k += 1
 
     def print_info(self):
-        # for j in range(self.node_num):
-        #     print(self.sp.get_constraint_by_name('node%s' % j))
-        #
-        # # 输出目标函数
-        # print("Objective:")
-        # print(self.sp.get_objective_expr())
+        for j in range(self.node_num):
+            print(self.sp.get_constraint_by_name('node%s' % j))
+
+        # 输出目标函数
+        print("Objective:")
+        print(self.sp.get_objective_expr())
         self.sp.print_information()  # 输出模型信息
 
     def solve(self):

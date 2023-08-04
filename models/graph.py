@@ -1,6 +1,7 @@
 from models.handing import FlightData
 from models.utils import AdjustItem, GraphNode, Airport, AirportClose, CloseScene
 from models.utils import SlotScene, AirportSlot, Slot, SlotItem
+from models.utils import timedelta_minutes
 from datetime import timedelta, datetime
 
 
@@ -245,7 +246,7 @@ class Graph(object):
                             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
                             endorsement_cost = passenger_endorse_delay_para(afa.adjust_time) * endorsement_num
                         else:  # 提前
-                            adjust_cost = -afa.adjust_time.seconds / 3600 * 150
+                            adjust_cost = -timedelta_minutes(afa.adjust_time)/60 * 150
                             passenger_cost = 0
                             endorsement_cost = 0
 
