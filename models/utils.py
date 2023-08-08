@@ -1,5 +1,6 @@
 from pandas import Series
 from datetime import timedelta, datetime
+import numpy as np
 
 
 class SceneList(object):
@@ -270,7 +271,14 @@ class AdjTabItem(object):
         self.suc = []
 
     def __repr__(self):
-        return f'{self.num: {self.pre}-{self.suc}}'
+        return f'{self.num}: {self.info}'
+
+
+def dot_sum(ls: list, other: list):
+    if len(ls) == len(other):
+        return sum(np.array(ls) * np.array(other))
+    else:
+        raise 'LENGTH ERROR'
 
 
 if __name__ == '__main__':

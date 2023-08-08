@@ -34,7 +34,7 @@ class FlightData(object):
         self.aircraft_type_ls = None
         self.departure_airport_ls = None
         self.arrival_airport_ls = None
-        self.node_cnt = 0
+        self.graph_node_cnt = 0
         self.adjust_item_cnt = 0
         self.tip_node_cnt = -1
         self._aircraft_num = 0
@@ -45,6 +45,7 @@ class FlightData(object):
         self.schedule_groupby_departure = dict()
         self.graph_node_list = dict()
         self.airport_stop_tp = dict()  # 机场停机类型数
+        self.destination_airport = dict()  # 记录每架飞机的目的机场
         self._airport_num_to_graph_num_map = dict()
         self.advance_flight_node_nums = set()  # 统计能够进行提前的航班的node num
 
@@ -148,6 +149,7 @@ class FlightData(object):
             final_flight = groupby_cid.iloc[-1]
             tp = final_flight['机型']
             self.airport_list[final_flight['降落机场']].terminal_ctp[tp] += 1
+            self.destination_airport[cid] = final_flight['降落机场']
 
             schedule_groupby_date = groupby_cid.groupby(by='日期')
             for date, groupby_date in schedule_groupby_date:
@@ -157,7 +159,7 @@ class FlightData(object):
                     if dataframe['起飞时间'].iloc[0] < self.duration_start:
                         if len(dataframe) > 1 and dataframe['起飞时间'].iloc[1] > self.duration_start:
                             dataframe = dataframe[dataframe['起飞时间'] > self.duration_start]
-                            print("特殊航班，作为正好位于恢复期的联程后续航班，不可取消，只能调整", self.node_cnt)
+                            print("特殊航班，作为正好位于恢复期的联程后续航班，不可取消，只能调整", self.graph_node_cnt)
                             print(dataframe)
                         else:
                             continue
@@ -175,7 +177,7 @@ class FlightData(object):
                     flight_info['cost'] = 0
                     flight_info['ma'] = None  # 中间航班信息
 
-                    graph_node = GraphNode(self.node_cnt, flight_info)
+                    graph_node = GraphNode(self.graph_node_cnt, flight_info)
                     if len(dataframe) > 1:
                         flight_info['attr'] = 'through'
                         landing_airport = dataframe['降落机场'].iloc[0]
@@ -201,7 +203,7 @@ class FlightData(object):
                                         minutes=int(self.flying_time[straighten_flight_key]))
                                 else:
                                     straighten_flying_time = flight_info['avt'] - flight_info['dpt'] - turn_time
-                                straighten = AdjustItem(self.node_cnt, flight_info['dpt'],
+                                straighten = AdjustItem(self.graph_node_cnt, flight_info['dpt'],
                                                         flight_info['dpt'] + straighten_flying_time)
                                 self.adjust_item_cnt += 1
                                 straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
@@ -240,15 +242,15 @@ class FlightData(object):
                                     takeoff_fallin_slot = slots.takeoff_slot.midst_eq(earliest_advance_time,
                                                                                       slot_end_time)
                                     graph_node = self.adjust_through_flight(graph_node, takeoff_fallin_slot, dataframe)
-                                    self.advance_flight_node_nums.add(self.node_cnt)
+                                    self.advance_flight_node_nums.add(self.graph_node_cnt)
 
                         through_flight.append(graph_node.key)
                     else:
                         normal_flight.append(graph_node.key)
                     self.graph_node_list[graph_node.key] = graph_node
-                    self.airport_list[flight_info['dp']].departure_flight_list.append(self.node_cnt)
-                    self.airport_list[flight_info['ap']].arrival_flight_list.append(self.node_cnt)
-                    self.node_cnt += 1
+                    self.airport_list[flight_info['dp']].departure_flight_list.append(self.graph_node_cnt)
+                    self.airport_list[flight_info['ap']].arrival_flight_list.append(self.graph_node_cnt)
+                    self.graph_node_cnt += 1
         print('拉直航班个数', len(strengthen_flight))
         print(strengthen_flight)
         print('联程航班个数', len(through_flight))

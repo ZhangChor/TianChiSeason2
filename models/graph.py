@@ -1,8 +1,9 @@
+from datetime import timedelta, datetime
+
 from models.handing import FlightData
 from models.utils import AdjustItem, GraphNode, Airport, AirportClose, CloseScene
 from models.utils import SlotScene, AirportSlot, Slot, SlotItem
 from models.utils import timedelta_minutes
-from datetime import timedelta, datetime
 
 
 def change_aircraft_para(time: datetime):
@@ -75,7 +76,6 @@ class Graph(object):
         max_lead_time: timedelta = self.flight_data.max_lead_time
 
         zero_time = timedelta(minutes=0)
-        adjust_item_num = self.flight_data.adjust_item_cnt
         edge_num = 0
         while self.queue:
             # print(len(self.queue), self.queue)
@@ -145,7 +145,7 @@ class Graph(object):
                                 adjust_time = s.start_time - alter_flight_dpt
                                 adjust_info = AdjustItem(nn, alter_flight_dpt + adjust_time,
                                                          alter_flight_avt + adjust_time, adjust_time)
-                                adjust_item_num += 1
+                                self.flight_data.adjust_item_cnt += 1
                                 s.fall_in.append((current_node_num, adjust_time))
                                 alter_flight_adjust[adjust_time] = adjust_info
 
@@ -161,7 +161,7 @@ class Graph(object):
                                 adjust_time = s.start_time - alter_flight_avt
                                 adjust_info = AdjustItem(nn, alter_flight_dpt + adjust_time,
                                                          alter_flight_avt + adjust_time, adjust_time)
-                                adjust_item_num += 1
+                                self.flight_data.adjust_item_cnt += 1
                                 s.fall_in.append((current_node_num, adjust_time))
                                 alter_flight_adjust[adjust_time] = adjust_info
 
@@ -197,7 +197,7 @@ class Graph(object):
                                 f'node:{nn} cid:{alter_flight_info["cid"]} fids:{alter_flight_info["fids"]}受机场关闭影响，延误{delay_time}')
                             adjust_info = AdjustItem(nn, alter_flight_dpt + delay_time,
                                                      alter_flight_info['avt'] + delay_time, delay_time)
-                            adjust_item_num += 1
+                            self.flight_data.adjust_item_cnt += 1
                             if delay_time not in alter_flight_adjust.keys():
                                 alter_flight_adjust[delay_time] = adjust_info
                         else:  # 无法通过延误避免进入关闭机场
@@ -227,7 +227,7 @@ class Graph(object):
 
                         adjust_info = AdjustItem(nn, alter_flight_dpt + delay_time,
                                                  alter_flight_info['avt'] + delay_time, delay_time)
-                        adjust_item_num += 1
+                        self.flight_data.adjust_item_cnt += 1
                         if delay_time not in alter_flight_adjust.keys():
                             alter_flight_adjust[delay_time] = adjust_info
                 # 尝试连接
@@ -246,7 +246,7 @@ class Graph(object):
                             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
                             endorsement_cost = passenger_endorse_delay_para(afa.adjust_time) * endorsement_num
                         else:  # 提前
-                            adjust_cost = -timedelta_minutes(afa.adjust_time)/60 * 150
+                            adjust_cost = -timedelta_minutes(afa.adjust_time) / 60 * 150
                             passenger_cost = 0
                             endorsement_cost = 0
 
@@ -262,9 +262,9 @@ class Graph(object):
                         cost = (adjust_cost + passenger_cost + change_cost + endorsement_cost) * alter_flight_info[
                             'para']
                         cost += afa.cost
-
-                        if (current_node_num, current_adjust_info.adjust_time, cost) not in afa.pre:
-                            afa.pre.append((current_node_num, current_adjust_info.adjust_time, cost))
+                        edge_mark = (current_node_num, current_adjust_info.adjust_time, cost)
+                        if edge_mark not in afa.pre:
+                            afa.pre.append(edge_mark)
                         edge_num += 1
                         if (nn, afa.adjust_time) not in current_adjust_info.suc:
                             current_adjust_info.suc.append((nn, afa.adjust_time))
@@ -280,5 +280,5 @@ class Graph(object):
                 if current_mark_pre not in destination_airport.adjust_list[zero_time].pre:
                     destination_airport.adjust_list[zero_time].pre.append(current_mark_pre)
 
-        print(f'AdjustItem num: {adjust_item_num}')
+        print(f'AdjustItem num: {self.flight_data.adjust_item_cnt}')
         print(f'Edge num: {edge_num}')

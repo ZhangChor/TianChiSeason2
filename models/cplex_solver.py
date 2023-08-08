@@ -5,8 +5,9 @@ sys.path.append(r'/home/zc/PathModel3')
 from docplex.mp.model import Model
 
 
-class CplexSolver(object):
-    def __init__(self, route: list, cost: list, var_num_list: list, cancel: list, relaxation=True):
+class MasterProblemSolver(object):
+    def __init__(self, route: list, cost: list, var_num_list: list, cancel: list, slot_used: list, slot_capacity: list,
+                 parking_used: list, parking_capacity: list, relaxation=True):
         self._flight_node_num = len(cancel)
         self._aircraft_num = len(var_num_list)
         self._route_num = sum(var_num_list)
@@ -39,6 +40,10 @@ class CplexSolver(object):
                                         ctname=f'aircraft{cid}')
             start += n
             cid += 1
+        # slot容量限制
+
+        # 机场容量限制
+
 
         self._solver.minimize(self._solver.sum(cost[i] * self._x_list[i] for i in range(self._route_num)) +
                               self._solver.sum(cancel[j] * self._y_list[j] for j in range(self._flight_node_num)))
@@ -126,6 +131,12 @@ class ShortestPath(object):
             print("当前问题无解")
             return None
 
+    def is_int(self) -> bool:
+        for i in self.solution:
+            if i != int(i):
+                return False
+        return True
+
     @property
     def solution(self) -> list:
         return [self.result.get_value('x_' + s) for s in self._var_name_list]
@@ -133,12 +144,6 @@ class ShortestPath(object):
     @property
     def optimal(self) -> float:
         return self.sp.objective_value
-
-    def is_int(self) -> bool:
-        for i in self.solution:
-            if i != int(i):
-                return False
-        return True
 
 
 if __name__ == '__main__':
