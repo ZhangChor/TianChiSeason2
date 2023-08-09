@@ -11,6 +11,8 @@ class MasterProblemSolver(object):
         self._flight_node_num = len(cancel)
         self._aircraft_num = len(var_num_list)
         self._route_num = sum(var_num_list)
+        self._slot_num = len(slot_capacity)
+        self._parking_num = len(parking_capacity)
         self._var_name_list_x = []
         self.result = None
 
@@ -41,10 +43,16 @@ class MasterProblemSolver(object):
             start += n
             cid += 1
         # slot容量限制
-
+        for j in range(self._slot_num):
+            self._solver.add_constraint(self._solver.sum(slot_used[i][j]*self._x_list[i]
+                                                         for i in range(self._route_num)) <= slot_capacity[j],
+                                        ctname=f'slot{j}')
         # 机场容量限制
-
-
+        for j in range(self._parking_num):
+            self._solver.add_constraint(self._solver.sum(parking_used[i][j]*self._x_list[i]
+                                                         for i in range(self._route_num)) <= parking_capacity[j],
+                                        ctname=f'parking{j}')
+        # 目标函数
         self._solver.minimize(self._solver.sum(cost[i] * self._x_list[i] for i in range(self._route_num)) +
                               self._solver.sum(cancel[j] * self._y_list[j] for j in range(self._flight_node_num)))
 
@@ -80,6 +88,14 @@ class MasterProblemSolver(object):
     @property
     def aircraft_dual(self) -> list:
         return self._solver.dual_values(self._solver.find_matching_linear_constraints('aircraft'))
+
+    @property
+    def slot_dual(self) -> list:
+        return self._solver.dual_values(self._solver.find_matching_linear_constraints('slot'))
+
+    @property
+    def parking_dual(self) -> list:
+        return self._solver.dual_values(self._solver.find_matching_linear_constraints('parking'))
 
     @property
     def optimal(self) -> float:

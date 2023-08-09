@@ -21,12 +21,12 @@ class ColumnGeneration(object):
         self.split_time = self.flight_data.split_time
         self.airport_parking_scene = AirportParkingScene()
         self.airport_parking_map = dict()
+        self.airport_parking_capacity = list()
         self.aircraft_top_order = dict()  # 每架飞机的可执行航班的拓扑排序都不一定一样
         self.adjacency_table_list = dict()  # 储存每架飞机的邻接表
         self.node2num_map_list = dict()  # 储存每架飞机可执行航班到在邻接矩阵中的行的指标
         self.edge_ls_list = dict()  # 储存每架飞机可执行边
         self.edge2num_map_list = dict()  # 储存每架飞机可执行边在邻接矩阵中的列的指标
-        # TODO 后续删除一些冗余数据
         self.ass_matrix_list = dict()  # 储存每架飞机的邻接矩阵
         self.edge_cost_list = dict()  # 储存每架飞机边的执行花费
         self.node_attr_list = dict()  # 存储每架飞机的node的出入度情况
@@ -58,9 +58,9 @@ class ColumnGeneration(object):
         self.aircraft_route_nums = [0] * len(self.flight_data.aircraft_list)  # 记录每架飞机现有路径个数
         self.solution_x = None
         self.solution_y = None
-        self.solution_z = None
         self.optimal_value_list = list()
         self.iter_num = 0
+        self._add_route_reduce_cost = list()
 
     def add_airport_parking(self, airport_parking_constraint_list: list):
         airfield_stoppage_num = 0
@@ -68,6 +68,7 @@ class ColumnGeneration(object):
             airport_num, start_time, end_time, capacity = item
             self.airport_parking_scene[airport_num] = AirfieldStoppages(airport_num, start_time, end_time, capacity)
             self.airport_parking_map[airport_num] = airfield_stoppage_num
+            self.airport_parking_capacity.append(capacity)
             airfield_stoppage_num += 1
         self.airfield_stoppage_dual = [0] * len(airport_parking_constraint_list)
 
@@ -291,26 +292,12 @@ class ColumnGeneration(object):
                     exceeded_slots_num += 1
         self.slot_dual = [0] * len(self.exceeded_slots_capacity)
 
-    def generate_terminal_airport_aircraft_type_matrix(self):
-        airport_stop_tp = self.flight_data.airport_stop_tp
-        aircraft_type_ls = self.flight_data.aircraft_type_ls
-        terminal_num = 0
-        for airport_num, type_info in airport_stop_tp.items():
-            for ctp in aircraft_type_ls:
-                needs = type_info[ctp]
-                if needs > 0:
-                    terminal_airport_mark = (airport_num, ctp)
-                    self.terminal_airport_list.append(terminal_airport_mark)
-                    self.terminal_airport_needs_list.append(needs)
-                    self.terminal_airport_index_map[terminal_airport_mark] = terminal_num
-                    terminal_num += 1
-        self.terminal_airport_dual = [0] * len(self.terminal_airport_needs_list)
-
     def add_column(self, aircraft_num: int, shortest_path: list[int], adjacency_table: list[AdjTabItem],
-                   reduce_cost, execution_cost):
-        if reduce_cost > 0:
+                   route_optimal, execution_cost):
+        # 在route中加入新路径，也就是增加column
+        if route_optimal > 0:
             return
-            # 在route中加入新路径，也就是增加column
+        route_reduce_cost = route_optimal + self.aircraft_dual[aircraft_num - 1]
         edge_strings = list()
         edge_ls = self.edge_ls_list[aircraft_num]
         edge_index = 0
@@ -322,8 +309,8 @@ class ColumnGeneration(object):
         graph_node_string = list()
         new_route = [0] * self.flight_data.graph_node_cnt
         # 需要统计该路径的slot 使用情况；是否使用停在了有限制的机场
-        slot_used = [0] * len(self.exceeded_slots)  # TODO 填入
-        parking_used = [0] * len(self.airport_parking_scene)  # TODO 填入
+        slot_used = [0] * len(self.exceeded_slots)
+        parking_used = [0] * len(self.airport_parking_scene)
         while edge_strings:
             from_node_num, airm_node_num = edge_strings.pop(0)
             airm_node = adjacency_table[airm_node_num]
@@ -353,10 +340,20 @@ class ColumnGeneration(object):
                         airfield_stoppages.end_time <= airm_adjust_item.departure_time:
                     parking_used[self.airport_parking_map[airm_flight_info['dp']]] = 1
 
+        route_reduce_cost += dot_sum(self.slot_dual, slot_used) + dot_sum(self.airfield_stoppage_dual, parking_used)
+        if route_reduce_cost > 0:
+            print(f'飞机ID：{aircraft_num} 最短路径的reduce cost大于0, {route_reduce_cost}')
+            return
         aircraft_index = aircraft_num - 1
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
         aircraft_route_set_end = aircraft_route_set_start + self.aircraft_route_nums[aircraft_index]
         # if new_route not in self.route[aircraft_route_set_start:aircraft_route_set_end]:
+        route_repeat = new_route in self.route[aircraft_route_set_start:aircraft_route_set_end]
+        slot_repeat = slot_used in self.slot_used[aircraft_route_set_start:aircraft_route_set_end]
+        paring_repeat = parking_used in self.parking_used[aircraft_route_set_start:aircraft_route_set_end]
+        if route_repeat and slot_repeat and paring_repeat:
+            print(f'飞机ID：{aircraft_num} 路径重复, {route_reduce_cost}')
+            return
         # 插入新增路径
         ins_index = sum(self.aircraft_route_nums[:(aircraft_index + 1)])
         self.route.insert(ins_index, new_route)
@@ -364,47 +361,68 @@ class ColumnGeneration(object):
         self.parking_used.insert(ins_index, parking_used)
         self.graph_node_strings.insert(ins_index, graph_node_string)
         self.route_execution_costs.insert(ins_index, execution_cost)
-        self.route_reduce_costs.insert(ins_index, reduce_cost)
+        self.route_reduce_costs.insert(ins_index, route_reduce_cost)
         self.aircraft_route_nums[aircraft_index] += 1
-        print(f'为飞机ID：{aircraft_num}新增一条路径，reduce cost = {reduce_cost}，包含航班数{sum(new_route)}')
+        self._add_route_reduce_cost.append(route_reduce_cost)
+        print(f'为飞机ID：{aircraft_num} 新增一条路径，包含航班数{sum(new_route)}，reduce cost={route_reduce_cost}')
 
     def run(self):
-        # 生成初始解
+        # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
         self.generate_dep_arr_slot_matrix()
-        # self.generate_terminal_airport_aircraft_type_matrix()
         for aircraft_num in self.flight_data.aircraft_list.keys():
             graph_node_list_cp = self.pre_traversal(aircraft_num)
             self.topological_ordering(aircraft_num, graph_node_list_cp)
             self.generate_association_matrix(aircraft_num)
-            # 可并行
-            edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
-            edge_execution_cost = self.edge_cost_list[aircraft_num]
-            edge2num_map = self.edge2num_map_list[aircraft_num]
-            adjacency_table = self.adjacency_table_list[aircraft_num]
-            for edge, edge_index in edge2num_map.items():
-                from_node_num, airm_node_num = edge
-                airm_adj_tab_item: AdjTabItem = adjacency_table[airm_node_num]
-                airm_node_info = airm_adj_tab_item.info
-                if not airm_node_info:
-                    continue
-                airm_graph_node_num = airm_node_info[0]
-                graph_node_dual = self.flight_dual[airm_graph_node_num]
-                edge_cost[edge_index] += graph_node_dual
+        # 开始循环
+        while True:
+            self._add_route_reduce_cost = list()
+            for aircraft_num in self.flight_data.aircraft_list.keys():
+                # TODO 可并行
+                edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
+                edge_execution_cost = self.edge_cost_list[aircraft_num]
+                edge2num_map = self.edge2num_map_list[aircraft_num]
+                adjacency_table = self.adjacency_table_list[aircraft_num]
+                for edge, edge_index in edge2num_map.items():
+                    from_node_num, airm_node_num = edge
+                    airm_adj_tab_item: AdjTabItem = adjacency_table[airm_node_num]
+                    airm_node_info = airm_adj_tab_item.info
+                    if not airm_node_info:
+                        continue
+                    airm_graph_node_num = airm_node_info[0]
+                    graph_node_dual = self.flight_dual[airm_graph_node_num]
+                    edge_cost[edge_index] += graph_node_dual
 
-            sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
-                                     edge_cost)
-            sp_solver.add_mutex_constraint(self.flight_data.advance_flight_node_nums,
-                                           self.graph_node_index_list[aircraft_num])
-            sp_solver.solve()
-            print(f'正在为飞机ID {aircraft_num}', '初始化路径...')
-            if sp_solver.is_int():
-                # print('最优解:', sp_solver.optimal)
-                path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
-                print('路径执行成本:', path_execution_cost)
-                self.add_column(aircraft_num, sp_solver.solution, adjacency_table,
-                                reduce_cost=sp_solver.optimal, execution_cost=path_execution_cost)
-            else:
-                print(f'出现问题的飞机ID: {aircraft_num}')
-                raise '!!!注意，求解子问题时出现非整数解!!!'
-        # 开始求解主问题
-
+                sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
+                                         edge_cost)
+                sp_solver.add_mutex_constraint(self.flight_data.advance_flight_node_nums,
+                                               self.graph_node_index_list[aircraft_num])
+                sp_solver.solve()
+                if sp_solver.is_int():
+                    # print('最优解:', sp_solver.optimal)
+                    path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
+                    print('路径执行成本:', path_execution_cost)
+                    self.add_column(aircraft_num, sp_solver.solution, adjacency_table,
+                                    route_optimal=sp_solver.optimal, execution_cost=path_execution_cost)
+                else:
+                    print(f'出现问题的飞机ID: {aircraft_num}')
+                    raise '!!!注意，求解子问题时出现非整数解!!!'
+            # 开始求解主问题
+            if not self._add_route_reduce_cost:
+                break
+            mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
+                                            self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
+                                            self.parking_used, self.airport_parking_capacity)
+            mp_solver.solve()
+            self.solution_x = mp_solver.solution_x
+            self.solution_y = mp_solver.solution_y
+            self.flight_dual = mp_solver.flight_node_dual
+            self.aircraft_dual = mp_solver.aircraft_dual
+            self.slot_dual = mp_solver.slot_dual
+            self.airfield_stoppage_dual = mp_solver.parking_dual
+            self.optimal_value_list.append(mp_solver.optimal)
+            print(f'------Iter Num {self.iter_num}------')
+            self.iter_num += 1
+            print('最优值:', mp_solver.optimal)
+            print('取消航班数:', sum(self.solution_y))
+            if self.iter_num > 5:
+                break
