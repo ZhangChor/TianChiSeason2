@@ -31,25 +31,25 @@ class MasterProblemSolver(object):
             self._y_list = self._solver.binary_var_list(self._var_name_list_y, name='y')
         # 航班约束：每次航班最多仅能被选入解一次
         for j in range(self._flight_node_num):
-            self._solver.add_constraint(self._solver.sum(route[i][j] * self._x_list[i]
-                                                         for i in range(self._route_num)) + self._y_list[j] == 1,
-                                        ctname=f'flight_node{j}')
+            flight_ct = self._solver.sum(route[i][j] * self._x_list[i]
+                                         for i in range(self._route_num)) + self._y_list[j] == 1
+            self._solver.add_constraint(flight_ct, ctname=f'flight_node{j}')
         start = 0
         cid = 0
         # 飞机约束：每架飞机有一条路径
         for n in var_num_list:
-            self._solver.add_constraint(self._solver.sum(self._x_list[i] for i in range(start, start + n)) <= 1,
-                                        ctname=f'aircraft{cid}')
+            aircraft_ct = self._solver.sum(self._x_list[i] for i in range(start, start + n)) <= 1
+            self._solver.add_constraint(aircraft_ct, ctname=f'aircraft{cid}')
             start += n
             cid += 1
         # slot容量限制
         for j in range(self._slot_num):
-            self._solver.add_constraint(self._solver.sum(slot_used[i][j]*self._x_list[i]
+            self._solver.add_constraint(self._solver.sum(slot_used[i][j] * self._x_list[i]
                                                          for i in range(self._route_num)) <= slot_capacity[j],
                                         ctname=f'slot{j}')
         # 机场容量限制
         for j in range(self._parking_num):
-            self._solver.add_constraint(self._solver.sum(parking_used[i][j]*self._x_list[i]
+            self._solver.add_constraint(self._solver.sum(parking_used[i][j] * self._x_list[i]
                                                          for i in range(self._route_num)) <= parking_capacity[j],
                                         ctname=f'parking{j}')
         # 目标函数

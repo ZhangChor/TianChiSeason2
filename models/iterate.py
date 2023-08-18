@@ -46,8 +46,8 @@ class ColumnGeneration(object):
         self.flight_cancel_cost = flight_cancel_cost
         self.flight_dual = [-x for x in flight_cancel_cost]  # 航班取消成本为航班对偶值的上界
         # self.flight_dual = [0] * len(flight_cancel_cost)  # 初始航班对偶值设为0
-        self.slot_dual = None
-        self.airfield_stoppage_dual = None
+        self.slot_dual = []
+        self.airfield_stoppage_dual = []
 
         self.route = list()  # 储存所有路径集
         self.slot_used = list()  # 储存每条路径的slot使用情况
@@ -164,7 +164,7 @@ class ColumnGeneration(object):
                     current_graph_node, current_adjust_item = graph_node, adjust_item
                     break
             current_mark = (current_node_num, current_adjust_time)
-            if current_node_num < 0:
+            if current_node_num < -len(self.flight_data.aircraft_list):
                 destination_airport.append(current_mark)
             top_order_ls.append(current_mark)
             queue.remove(current_mark)
@@ -295,8 +295,6 @@ class ColumnGeneration(object):
     def add_column(self, aircraft_num: int, shortest_path: list[int], adjacency_table: list[AdjTabItem],
                    route_optimal, execution_cost):
         # 在route中加入新路径，也就是增加column
-        if route_optimal > 0:
-            return
         route_reduce_cost = route_optimal + self.aircraft_dual[aircraft_num - 1]
         edge_strings = list()
         edge_ls = self.edge_ls_list[aircraft_num]
@@ -320,6 +318,8 @@ class ColumnGeneration(object):
                 continue
             graph_node_string.append(airm_node_info)
             airm_graph_node_num, airm_adjust_time = airm_node_info
+            if airm_graph_node_num < 0:
+                continue
             airm_graph_node: GraphNode = self.graph_node_list[airm_graph_node_num]
             new_route[airm_graph_node.key] = 1
             airm_flight_info = airm_graph_node.flight_info
@@ -364,7 +364,26 @@ class ColumnGeneration(object):
         self.route_reduce_costs.insert(ins_index, route_reduce_cost)
         self.aircraft_route_nums[aircraft_index] += 1
         self._add_route_reduce_cost.append(route_reduce_cost)
-        print(f'为飞机ID：{aircraft_num} 新增一条路径，包含航班数{sum(new_route)}，reduce cost={route_reduce_cost}')
+        print(f'为飞机ID={aircraft_num} 新增一条路径，包含航班数{sum(new_route)}，reduce cost={route_reduce_cost}')
+        self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
+
+    def print_route_info(self, aircraft_num: int, route_num=0):
+        aircraft_index = aircraft_num - 1
+        aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
+        aircraft_route_set_end = aircraft_route_set_start + self.aircraft_route_nums[aircraft_index]
+        aircraft_routes = self.graph_node_strings[aircraft_route_set_start:aircraft_route_set_end]
+        if not aircraft_routes or len(aircraft_routes) < route_num:
+            return
+        selected_route = aircraft_routes[route_num]
+        route_fids = list()
+        for graph_node_info in selected_route:
+            graph_node_num, adjust_time = graph_node_info
+            if graph_node_num < 0:
+                continue
+            graph_node = self.graph_node_list[graph_node_num]
+            route_fids.append(graph_node.flight_info['fids'])
+        print(f'飞机ID={aircraft_num}的第{route_num}条路径信息：')
+        print(route_fids)
 
     def run(self):
         # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
@@ -377,7 +396,7 @@ class ColumnGeneration(object):
         while True:
             self._add_route_reduce_cost = list()
             for aircraft_num in self.flight_data.aircraft_list.keys():
-                # TODO 可并行
+                # 计算每条边的reduce cost，主要与边连接的目的航班有关
                 edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
                 edge_execution_cost = self.edge_cost_list[aircraft_num]
                 edge2num_map = self.edge2num_map_list[aircraft_num]
@@ -400,6 +419,7 @@ class ColumnGeneration(object):
                 if sp_solver.is_int():
                     # print('最优解:', sp_solver.optimal)
                     path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
+                    print('---')
                     print('路径执行成本:', path_execution_cost)
                     self.add_column(aircraft_num, sp_solver.solution, adjacency_table,
                                     route_optimal=sp_solver.optimal, execution_cost=path_execution_cost)
@@ -423,6 +443,15 @@ class ColumnGeneration(object):
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1
             print('最优值:', mp_solver.optimal)
+            for i in range(len(self.solution_x)):
+                if self.solution_x[i]:
+                    cid = -1
+                    for j in range(len(self.aircraft_dual)):
+                        if i < sum(self.aircraft_route_nums[0:j+1]):
+                            cid = j
+                            break
+                    print(f'为飞机ID={cid+1}分配路径{i}')
+            print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
-            if self.iter_num > 5:
+            if self.iter_num > 5:  # 需要改为正确的停止条件
                 break
