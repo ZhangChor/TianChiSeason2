@@ -97,11 +97,15 @@ class FlightData(object):
             graph_node.adjust_list[adjust_info.adjust_time] = adjust_info
         return graph_node
 
-    def selection_data(self, aircraft_id: int):
+    def selection_data(self, aircraft_id: int, start_time=None, end_time=None):
         # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
         self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)
         self.schedule.loc[:, ['降落时间']] = self.schedule['降落时间'].apply(datetime_parse)
+        if start_time is not None:
+            self.schedule = self.schedule[start_time <= self.schedule['起飞时间']]
+        if end_time is not None:
+            self.schedule = self.schedule[self.schedule['降落时间'] <= end_time]
         self.aircraft_type_ls = set(list(self.schedule['机型']))
         self.departure_airport_ls = set(list(self.schedule['起飞机场']))
         self.arrival_airport_ls = set(list(self.schedule['降落机场']))

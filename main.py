@@ -15,17 +15,19 @@ if __name__ == '__main__':
     max_domestic_delay = timedelta(hours=24)
     max_foreign_delay = timedelta(hours=36)
 
-    split_time = timedelta(minutes=20)
-    slot_capacity = 8
+    split_time = timedelta(minutes=30)
+    slot_capacity = 12
 
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = 3
+    AIRCRAFT_NUM = 2
     # typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
     #                 (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
     #                 (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
     # flight_data.add_typhoon(typhoon_list)
+    start_time = datetime(year=2017, month=5, day=6, hour=0)
+    end_time = datetime(year=2017, month=5, day=8, hour=0)
     flight_data.selection_data(AIRCRAFT_NUM)
     mega_graph = Graph(flight_data)
     # close_list = [(5, timedelta(hours=0, minutes=1), timedelta(hours=6, minutes=30),

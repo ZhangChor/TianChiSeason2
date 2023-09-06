@@ -24,8 +24,8 @@ class MasterProblemSolver(object):
         self._var_name_list_y = [f'n{i}' for i in range(self._flight_node_num)]
         self._solver = Model(name="route assignment problem")
         if relaxation:
-            self._x_list = self._solver.continuous_var_list(self._var_name_list_x, name='x')
-            self._y_list = self._solver.continuous_var_list(self._var_name_list_y, name='y')
+            self._x_list = self._solver.continuous_var_list(self._var_name_list_x, name='x', ub=1)
+            self._y_list = self._solver.continuous_var_list(self._var_name_list_y, name='y', ub=1)
         else:
             self._x_list = self._solver.binary_var_list(self._var_name_list_x, name='x')
             self._y_list = self._solver.binary_var_list(self._var_name_list_y, name='y')
@@ -163,22 +163,17 @@ class ShortestPath(object):
 
 
 if __name__ == '__main__':
-    var_num_lt = [3, 3, 2, 1, 4]  # 5架飞机，每架飞机拥有的路径数  ##某几架飞机的数值上升
-    cost = [-8, -9, -10, -8, -7, -6, -7, -6, -5, -7, -4, -6, -8]  # 增加几项
-    cancel = [1.2, 1.3, 1.1, 1.2, 1, 1.3, 1.4, 1.2, 1.1, 1, 1, 1.1, 1.3, 1.2, 1.1]  # 不变
-    route = [[1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],  # 0.0
-             [0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # 0.1
-             [0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0],  # 0.2
-             [0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # 1.0
-             [0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # 1.1
-             [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],  # 1.2
-             [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],  # 2.0
-             [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],  # 2.1
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0],  # 3.0
-             [1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # 4.0
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0],  # 4.1
-             [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1],  # 4.2
-             [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0]]  # 4.3
-    cplex_solver = CplexSolver(route, cost, var_num_lt, cancel)
+    var_num_lt = [1, 1, 1]
+    cost = [2, 3, 2.5]
+    cancel = [4]*7
+    route = [[1, 1, 0, 0, 0, 0, 0],
+             [0, 0, 1, 1, 1, 0, 0],
+             [0, 0, 0, 0, 0, 1, 1]]
+    cplex_solver = MasterProblemSolver(route, cost, var_num_lt, cancel,[],[],[],[])
     cplex_solver.print_info()
+    # cplex_solver.print_info()
     cplex_solver.solve()
+    print('Optimal =', cplex_solver.optimal)
+    print('x =', cplex_solver.solution_x)
+    print('Aircraft dual =', cplex_solver.aircraft_dual)
+    print('Flight dual =', cplex_solver.flight_node_dual)

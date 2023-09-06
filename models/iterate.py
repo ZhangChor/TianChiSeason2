@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from models.graph import Graph
 from models.handing import FlightData
-from models.utils import timedelta_minutes, dot_sum
+from models.utils import timedelta_minutes, dot_sum, change_aircraft_para
 from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotItem
 from models.utils import AirportParkingScene, AirfieldStoppages
 from models.cplex_solver import ShortestPath, MasterProblemSolver
@@ -42,9 +42,9 @@ class ColumnGeneration(object):
         for node_num, graph_node in self.flight_data.graph_node_list.items():
             graph_node: GraphNode
             if node_num >= 0:
-                flight_cancel_cost.append(graph_node.flight_info["para"] * 1200)
+                flight_cancel_cost.append(graph_node.flight_info["para"] * 1200 + graph_node.flight_info["pn"]*4)
         self.flight_cancel_cost = flight_cancel_cost
-        self.flight_dual = [-x for x in flight_cancel_cost]  # 航班取消成本为航班对偶值的上界
+        self.flight_dual = [x for x in flight_cancel_cost]  # 航班取消成本为航班对偶值的上界
         # self.flight_dual = [0] * len(flight_cancel_cost)  # 初始航班对偶值设为0
         self.slot_dual = []
         self.airfield_stoppage_dual = []
@@ -217,6 +217,8 @@ class ColumnGeneration(object):
                         cost = pre_info_cost
                         break
                 suc_adjust_item_cp.pre.remove((current_node_num, current_adjust_time, cost))
+                if suc_node_cp.key >= 0 and suc_node_cp.flight_info['cid'] != aircraft_num:  # 换机成本
+                    cost += change_aircraft_para(suc_node_cp.flight_info['dpt'])
                 edge_cost_ls.append(cost)
         # 为每一架飞机增加一个虚拟的沉落节点，保证一架飞机只有一个起点和一个终点
         sink_node = AdjTabItem(num=node_cnt, info=tuple())
@@ -295,7 +297,7 @@ class ColumnGeneration(object):
     def add_column(self, aircraft_num: int, shortest_path: list[int], adjacency_table: list[AdjTabItem],
                    route_optimal, execution_cost):
         # 在route中加入新路径，也就是增加column
-        route_reduce_cost = route_optimal + self.aircraft_dual[aircraft_num - 1]
+        route_reduce_cost = route_optimal - self.aircraft_dual[aircraft_num - 1]
         edge_strings = list()
         edge_ls = self.edge_ls_list[aircraft_num]
         edge_index = 0
@@ -392,7 +394,7 @@ class ColumnGeneration(object):
             graph_node_list_cp = self.pre_traversal(aircraft_num)
             self.topological_ordering(aircraft_num, graph_node_list_cp)
             self.generate_association_matrix(aircraft_num)
-        # 开始循环
+        # 开始主循环
         while True:
             self._add_route_reduce_cost = list()
             for aircraft_num in self.flight_data.aircraft_list.keys():
@@ -409,7 +411,7 @@ class ColumnGeneration(object):
                         continue
                     airm_graph_node_num = airm_node_info[0]
                     graph_node_dual = self.flight_dual[airm_graph_node_num]
-                    edge_cost[edge_index] += graph_node_dual
+                    edge_cost[edge_index] -= graph_node_dual
 
                 sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
                                          edge_cost)
@@ -453,5 +455,5 @@ class ColumnGeneration(object):
                     print(f'为飞机ID={cid+1}分配路径{i}')
             print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
-            if self.iter_num > 5:  # 需要改为正确的停止条件
-                break
+            # if self.iter_num > 5:  # 需要改为正确的停止条件
+            # break

@@ -6,13 +6,6 @@ from models.utils import SlotScene, AirportSlot, Slot, SlotItem
 from models.utils import timedelta_minutes
 
 
-def change_aircraft_para(time: datetime):
-    if time <= datetime(year=2017, month=5, day=6, hour=16):
-        return 15
-    else:
-        return 5
-
-
 def model_change_para(before: int, after: int, map_ls: dict):
     if before == after:
         return 0
@@ -250,9 +243,9 @@ class Graph(object):
                             passenger_cost = 0
                             endorsement_cost = 0
 
-                        change_cost = change_aircraft_para(afa.departure_time) if current_flight_info['cid'] != \
-                                                                                  alter_flight_info['cid'] else 0
-                        change_cost += model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
+                        # change_cost = change_aircraft_para(afa.departure_time) if current_flight_info['cid'] != \
+                        #                                                           alter_flight_info['cid'] else 0
+                        change_cost = model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
                                                          self.type_change_map)
 
                         if alter_flight_info['sn'] < current_flight_info['pn']:  # 取消旅客

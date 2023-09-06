@@ -281,5 +281,14 @@ def dot_sum(ls: list, other: list):
         raise 'LENGTH ERROR'
 
 
+def change_aircraft_para(time: datetime):
+    if time <= datetime(year=2017, month=5, day=6, hour=16):
+        return 15
+    else:
+        return 5
+
+
+
+
 if __name__ == '__main__':
     pass
