@@ -218,7 +218,9 @@ class Graph(object):
                 # 尝试连接
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
-                    if turn_time <= afa.departure_time - current_time:
+                    if turn_time <= afa.departure_time - current_time or \
+                            (current_flight_info['cid'] == alter_flight_info['cid'] and
+                             timedelta(minutes=40) <= afa.departure_time - current_time):
                         # if nn in current_node.pres:
                         #     print(f'出现了环...{nn}')
                         if current_node_num not in alter_flight_node.pres:
