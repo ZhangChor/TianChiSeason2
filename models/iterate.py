@@ -42,7 +42,7 @@ class ColumnGeneration(object):
         for node_num, graph_node in self.flight_data.graph_node_list.items():
             graph_node: GraphNode
             if node_num >= 0:
-                flight_cancel_cost.append(graph_node.flight_info["para"] * 1200 + graph_node.flight_info["pn"]*4)
+                flight_cancel_cost.append(graph_node.flight_info["para"] * 1200 + graph_node.flight_info["pn"] * 4)
         self.flight_cancel_cost = flight_cancel_cost
         self.flight_dual = [x for x in flight_cancel_cost]  # 航班取消成本为航班对偶值的上界
         # self.flight_dual = [0] * len(flight_cancel_cost)  # 初始航班对偶值设为0

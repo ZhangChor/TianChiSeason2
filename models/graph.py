@@ -197,7 +197,6 @@ class Graph(object):
                             continue
 
                     # 正常连接
-                    # 延误后，可能中间机场又受台风影响了？该数据中没有出现这种情况，不再处理!
                     forbid_list = [is_landing_forbid_c, is_takeoff_forbid_c, is_landing_forbid_t, is_takeoff_forbid_t]
                     if not sum(forbid_list):
                         if turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
@@ -206,25 +205,17 @@ class Graph(object):
                             delay_time = current_time - alter_flight_dpt + turn_time
                         else:  # 无法连接
                             continue
-
-                        # if alter_flight_info['attr'] == 'through':
-                        #     mid_airport: models.utils.MidstAirport = alter_flight_info['ma']
-                        #     if mid_airport.airport in self.typhoon_scene.keys():
-                        #         typhoon = self.typhoon_scene[mid_airport.airport]
-                        #         landing_forbid = typhoon.landing_forbid(mid_airport.arrival_time+delay_time)
-                        #         takeoff_forbid = typhoon.takeoff_forbid(mid_airport.departure_time+delay_time)
-                        #         if landing_forbid:
-                        #             print(f'num={adjust_item_num},fid={alter_flight_info["fids"]}禁止降落 {delay_time}')
-                        #         if takeoff_forbid:
-                        #             print(f'num={adjust_item_num},fid={alter_flight_info["fids"]}禁止起飞 {delay_time}')
-
+                        if delay_time > zero_time:
+                            adjust_info = AdjustItem(nn, alter_flight_dpt, alter_flight_info['avt'], zero_time)
+                            self.flight_data.adjust_item_cnt += 1
+                            if zero_time not in alter_flight_adjust.keys():
+                                alter_flight_adjust[zero_time] = adjust_info
                         adjust_info = AdjustItem(nn, alter_flight_dpt + delay_time,
                                                  alter_flight_info['avt'] + delay_time, delay_time)
                         self.flight_data.adjust_item_cnt += 1
                         if delay_time not in alter_flight_adjust.keys():
                             alter_flight_adjust[delay_time] = adjust_info
                 # 尝试连接
-
                 for afa in alter_flight_adjust.values():
                     afa: AdjustItem
                     if turn_time <= afa.departure_time - current_time:

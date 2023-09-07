@@ -21,7 +21,7 @@ if __name__ == '__main__':
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = 2
+    AIRCRAFT_NUM = 5
     # typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
     #                 (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
     #                 (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]

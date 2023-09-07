@@ -167,7 +167,7 @@ if __name__ == '__main__':
     cost = [2, 3, 2.5]
     cancel = [4]*7
     route = [[1, 1, 0, 0, 0, 0, 0],
-             [0, 0, 1, 1, 1, 0, 0],
+             [0, 0, 0, 1, 1, 0, 0],
              [0, 0, 0, 0, 0, 1, 1]]
     cplex_solver = MasterProblemSolver(route, cost, var_num_lt, cancel,[],[],[],[])
     cplex_solver.print_info()
