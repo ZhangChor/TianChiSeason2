@@ -410,6 +410,8 @@ class ColumnGeneration(object):
                     if not airm_node_info:
                         continue
                     airm_graph_node_num = airm_node_info[0]
+                    if airm_graph_node_num < 0:
+                        continue
                     graph_node_dual = self.flight_dual[airm_graph_node_num]
                     edge_cost[edge_index] -= graph_node_dual
 
