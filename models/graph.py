@@ -241,7 +241,8 @@ class Graph(object):
                         change_cost = model_change_para(current_flight_info['tp'], alter_flight_info['tp'],
                                                          self.type_change_map)
 
-                        if alter_flight_info['sn'] < current_flight_info['pn']:  # 取消旅客
+                        if alter_flight_info['sn'] < current_flight_info['pn'] and \
+                                current_flight_info['attr'] != 'through':  # 取消旅客
                             passenger_cancel_num = current_flight_info['pn'] - alter_flight_info['sn']
                             passenger_cost += passenger_cancel_num * 4
 
