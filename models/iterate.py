@@ -345,7 +345,7 @@ class ColumnGeneration(object):
                     parking_used[self.airport_parking_map[airm_flight_info['dp']]] = 1
 
         route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
-        if route_reduce_cost > 0:
+        if route_reduce_cost > 0.1:
             print(f'飞机ID：{aircraft_num} 最短路径的reduce cost大于0, {route_reduce_cost}')
             return
         aircraft_index = aircraft_num - 1
@@ -396,7 +396,8 @@ class ColumnGeneration(object):
             graph_node_list_cp = self.pre_traversal(aircraft_num)
             self.topological_ordering(aircraft_num, graph_node_list_cp)
             self.generate_association_matrix(aircraft_num)
-        data_saver = DataSaver(self.flight_data.aircraft_volume, self.flight_data.workspace_path + r"\solution")
+        data_saver = DataSaver(self.flight_data.aircraft_volume, self.flight_data.slot_capacity,
+                               self.flight_data.workspace_path + r"\solution")
         # 开始主循环
         start_time = current_time()
         while True:
@@ -454,7 +455,7 @@ class ColumnGeneration(object):
                                              running_time=time_mark-start_time)
                 solution_info.statistical_path_info(self.solution_x)
                 solution_info.statistical_cancel_info(self.solution_y)
-                data_saver.data_list.append(solution_info.data_picked())
+                data_saver.write_csv(solution_info.data_picked())
             self.optimal_value_list.append(mp_solver.optimal)
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1
@@ -469,4 +470,3 @@ class ColumnGeneration(object):
                     print(f'为飞机ID={cid+1}分配路径{i}')
             print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
-        data_saver.write_csv()

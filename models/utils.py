@@ -331,7 +331,7 @@ class SolutionInfo(object):
         hours, remainder = divmod(times.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         seconds_formatted = "{:.3f}".format(times.microseconds / 1000000)
-        formatted_time = f"{days}_{hours}_{minutes}_{seconds}_{seconds_formatted}"
+        formatted_time = f"{days}_{hours}_{minutes}_{seconds}{seconds_formatted[2:]}"
         return formatted_time
 
     def _get_cid(self, index: int) -> int:
@@ -396,51 +396,58 @@ class SolutionInfo(object):
                 flight_info = graph_node.flight_info
                 self.flight_cancellation += len(flight_info["fids"])
                 self.passenger_cancellation += flight_info["pn"]
+                self.seat_remains += flight_info["sn"]
         self.error_rate = (self.del_15m_flights + self.adv_15m_flights) / self.performed_flights if self.performed_flights else 0
         self.avg_del_minutes = self.total_del_minutes / self.del_flights if self.del_flights else 0
         self.avg_adv_minutes = self.total_adv_minutes / self.adv_flights if self.adv_flights else 0
 
     def data_picked(self):
         data = dict()
-        data["IterNum"] = self.iter_num
-        data["RunningTime"] = self.time_str()
+        data["Iter"] = self.iter_num
+        data["Time"] = self.running_time
         data["Scores"] = "{:.3f}".format(self.scores)
-        data["PerformedFlight"] = self.performed_flights
-        data["CancelledFlight"] = self.flight_cancellation
-        data["StraightenFlight"] = self.straighten_flights
-        data["DelFlight"] = self.del_flights
-        data["AdvFlight"] = self.adv_flights
-        data["TotalDelMinutes"] = "{:.1f}".format(self.total_del_minutes)
-        data["TotalAdvMinutes"] = "{:.1f}".format(self.total_adv_minutes)
-        data["TypeConversion"] = self.aircraft_type_conversion
-        data["RotationFlight"] = self.swap_flights
-        data["MakeUpFlight"] = self.make_up_flights
+        data["Perf."] = self.performed_flights
+        data["Cancel"] = self.flight_cancellation
+        data["Straight"] = self.straighten_flights
+        data["Del."] = self.del_flights
+        data["Adv."] = self.adv_flights
+        data["TotalDel."] = "{:.1f}".format(self.total_del_minutes)
+        data["TotalAdv."] = "{:.1f}".format(self.total_adv_minutes)
+        data["Conv."] = self.aircraft_type_conversion
+        data["Rota."] = self.swap_flights
+        data["MakeUp"] = self.make_up_flights
         data["ErrorRate"] = "{:.6f}".format(self.error_rate)
-        data["PassengerCancellation"] = int(self.passenger_cancellation)
-        data["PassengerDelayNums"] = int(self.passenger_delay_nums)
-        data["PassengerDelayMinutes"] = self.passenger_delay_minutes
-        data["SeatRemains"] = int(self.seat_remains)
-        data["Del15mFlight"] = self.del_15m_flights
-        data["Del30mFlight"] = self.del_30m_flights
-        data["AvgDelMinutes"] = "{:.1f}".format(self.avg_del_minutes)
-        data["Adv15mFlight"] = self.adv_15m_flights
-        data["Adv30mFlight"] = self.adv_30m_flights
-        data["AvgAdvMinutes"] = "{:.1f}".format(self.avg_adv_minutes)
+        data["P.Cancel"] = int(self.passenger_cancellation)
+        data["P.DelNums"] = int(self.passenger_delay_nums)
+        data["P.DelMinute"] = self.passenger_delay_minutes
+        data["SeatRema."] = int(self.seat_remains)
+        data["Del15m"] = self.del_15m_flights
+        data["Del30m"] = self.del_30m_flights
+        data["AvgDel."] = "{:.1f}".format(self.avg_del_minutes)
+        data["Adv15m"] = self.adv_15m_flights
+        data["Adv30m"] = self.adv_30m_flights
+        data["AvgAdv."] = "{:.1f}".format(self.avg_adv_minutes)
         return data
 
 
 class DataSaver(object):
-    def __init__(self, aircraft_num: int, file_path: str):
+    def __init__(self, aircraft_num: int, slot_capacity: int, file_path: str):
         self.data_list = list()
         self.aircraft_num = aircraft_num
+        self.slot_capacity = slot_capacity
         self.file_path = file_path
+        self.field_name = ""
 
-    def write_csv(self):
-        file_name = self.file_path + "\\" + str(self.aircraft_num) + ".csv"
-        with open(file_name, mode='w', newline='') as csv_file:
-            fieldnames = self.data_list[0].keys()  # 使用第一个字典的keys作为列名
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for row in self.data_list:
-                writer.writerow(row)
+    def write_csv(self, data_info: dict):
+        self.data_list.append(data_info)
+        file_name = self.file_path + "\\cid" + str(self.aircraft_num) + f"slot{self.slot_capacity}" + ".csv"
+        if len(self.data_list) == 1:
+            self.field_name = self.data_list[0].keys()  # 使用第一个字典的keys作为列名
+            with open(file_name, mode='w', newline='') as csv_file:
+                writer = csv.DictWriter(csv_file, fieldnames=self.field_name)
+                writer.writeheader()
+                writer.writerow(self.data_list[0])
+        else:
+            with open(file_name, 'a', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=self.field_name)
+                writer.writerow(self.data_list[-1])

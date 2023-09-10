@@ -15,13 +15,13 @@ if __name__ == '__main__':
     max_domestic_delay = timedelta(hours=24)
     max_foreign_delay = timedelta(hours=36)
 
-    split_time = timedelta(minutes=20)
-    slot_capacity = 8
+    split_time = timedelta(minutes=30)
+    slot_capacity = 12
 
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = 5
+    AIRCRAFT_NUM = 20
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
