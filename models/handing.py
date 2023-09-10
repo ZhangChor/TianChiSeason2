@@ -23,12 +23,14 @@ class FlightData(object):
         self.slot_capacity = slot_capacity
 
         # read data
-        data_path = r'D:\workspace\TianChiSeason2\data'
+        self.workspace_path = r"D:\workspace\TianChiSeason2"
+        data_path = self.workspace_path + r"\data"
         self._flight_schedule = pd.read_csv(data_path + r'\flights_data.csv')
         self._airline_aircraft_ct = pd.read_csv(data_path + r'\airline_aircraft_ct.csv')
         self._flying_time_data = pd.read_csv(data_path + r'\flying_time_data.csv')
         self._turn_time_ct = pd.read_csv(data_path + r'\turn_time_ct.csv')
 
+        self.aircraft_volume = 0
         self.schedule = None
         self._airport_ls = None
         self.aircraft_type_ls = None
@@ -98,6 +100,7 @@ class FlightData(object):
         return graph_node
 
     def selection_data(self, aircraft_id: int, start_time=None, end_time=None):
+        self.aircraft_volume = aircraft_id
         # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
         self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
         self.schedule.loc[:, ['起飞时间']] = self.schedule['起飞时间'].apply(datetime_parse)

@@ -1,11 +1,13 @@
 from pickle import dumps, loads
 from datetime import timedelta
+from time import time as current_time
 
 from models.graph import Graph
 from models.handing import FlightData
-from models.utils import timedelta_minutes, dot_sum, change_aircraft_para
+from models.utils import dot_sum, change_aircraft_para
 from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotItem
 from models.utils import AirportParkingScene, AirfieldStoppages
+from models.utils import SolutionInfo, DataSaver
 from models.cplex_solver import ShortestPath, MasterProblemSolver
 
 
@@ -342,7 +344,7 @@ class ColumnGeneration(object):
                         airfield_stoppages.end_time <= airm_adjust_item.departure_time:
                     parking_used[self.airport_parking_map[airm_flight_info['dp']]] = 1
 
-        route_reduce_cost += dot_sum(self.slot_dual, slot_used) + dot_sum(self.airfield_stoppage_dual, parking_used)
+        route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
         if route_reduce_cost > 0:
             print(f'飞机ID：{aircraft_num} 最短路径的reduce cost大于0, {route_reduce_cost}')
             return
@@ -394,7 +396,9 @@ class ColumnGeneration(object):
             graph_node_list_cp = self.pre_traversal(aircraft_num)
             self.topological_ordering(aircraft_num, graph_node_list_cp)
             self.generate_association_matrix(aircraft_num)
+        data_saver = DataSaver(self.flight_data.aircraft_volume, self.flight_data.workspace_path + r"\solution")
         # 开始主循环
+        start_time = current_time()
         while True:
             self._add_route_reduce_cost = list()
             for aircraft_num in self.flight_data.aircraft_list.keys():
@@ -443,6 +447,14 @@ class ColumnGeneration(object):
             self.aircraft_dual = mp_solver.aircraft_dual
             self.slot_dual = mp_solver.slot_dual
             self.airfield_stoppage_dual = mp_solver.parking_dual
+            if not self.optimal_value_list or self.optimal_value_list[-1] - mp_solver.optimal > 0.1:
+                time_mark = current_time()
+                solution_info = SolutionInfo(self.graph_node_list, self.graph_node_strings, self.aircraft_route_nums,
+                                             cost=mp_solver.optimal, iter_num=self.iter_num,
+                                             running_time=time_mark-start_time)
+                solution_info.statistical_path_info(self.solution_x)
+                solution_info.statistical_cancel_info(self.solution_y)
+                data_saver.data_list.append(solution_info.data_picked())
             self.optimal_value_list.append(mp_solver.optimal)
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1
@@ -457,5 +469,4 @@ class ColumnGeneration(object):
                     print(f'为飞机ID={cid+1}分配路径{i}')
             print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
-            # if self.iter_num > 5:  # 需要改为正确的停止条件
-            # break
+        data_saver.write_csv()
