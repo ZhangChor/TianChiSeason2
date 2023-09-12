@@ -448,6 +448,6 @@ class DataSaver(object):
                 writer.writeheader()
                 writer.writerow(self.data_list[0])
         else:
-            with open(file_name, 'a', newline='') as csvfile:
+            with open(file_name, mode='a', newline='') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=self.field_name)
                 writer.writerow(self.data_list[-1])

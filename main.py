@@ -15,13 +15,13 @@ if __name__ == '__main__':
     max_domestic_delay = timedelta(hours=24)
     max_foreign_delay = timedelta(hours=36)
 
-    split_time = timedelta(minutes=30)
-    slot_capacity = 12
+    split_time = timedelta(minutes=60)
+    slot_capacity = 24
 
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity)
-    AIRCRAFT_NUM = 20
+    AIRCRAFT_NUM = 5
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -55,6 +55,7 @@ if __name__ == '__main__':
                                        (57, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 7)]
     cg.add_airport_parking(airport_parking_constraint_list)
     cg.run()
+    # cg.run_parallel()
 
 
 

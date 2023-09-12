@@ -9,6 +9,8 @@ from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotIte
 from models.utils import AirportParkingScene, AirfieldStoppages
 from models.utils import SolutionInfo, DataSaver
 from models.cplex_solver import ShortestPath, MasterProblemSolver
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 
 
 def deep_copy(data):
@@ -345,7 +347,7 @@ class ColumnGeneration(object):
                     parking_used[self.airport_parking_map[airm_flight_info['dp']]] = 1
 
         route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
-        if route_reduce_cost > 0.1:
+        if route_reduce_cost > 0:
             print(f'飞机ID：{aircraft_num} 最短路径的reduce cost大于0, {route_reduce_cost}')
             return
         aircraft_index = aircraft_num - 1
@@ -403,38 +405,8 @@ class ColumnGeneration(object):
         while True:
             self._add_route_reduce_cost = list()
             for aircraft_num in self.flight_data.aircraft_list.keys():
-                # 计算每条边的reduce cost，主要与边连接的目的航班有关
-                edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
-                edge_execution_cost = self.edge_cost_list[aircraft_num]
-                edge2num_map = self.edge2num_map_list[aircraft_num]
-                adjacency_table = self.adjacency_table_list[aircraft_num]
-                for edge, edge_index in edge2num_map.items():
-                    from_node_num, airm_node_num = edge
-                    airm_adj_tab_item: AdjTabItem = adjacency_table[airm_node_num]
-                    airm_node_info = airm_adj_tab_item.info
-                    if not airm_node_info:
-                        continue
-                    airm_graph_node_num = airm_node_info[0]
-                    if airm_graph_node_num < 0:
-                        continue
-                    graph_node_dual = self.flight_dual[airm_graph_node_num]
-                    edge_cost[edge_index] -= graph_node_dual
-
-                sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
-                                         edge_cost)
-                sp_solver.add_mutex_constraint(self.flight_data.advance_flight_node_nums,
-                                               self.graph_node_index_list[aircraft_num])
-                sp_solver.solve()
-                if sp_solver.is_int():
-                    # print('最优解:', sp_solver.optimal)
-                    path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
-                    print('---')
-                    print('路径执行成本:', path_execution_cost)
-                    self.add_column(aircraft_num, sp_solver.solution, adjacency_table,
-                                    route_optimal=sp_solver.optimal, execution_cost=path_execution_cost)
-                else:
-                    print(f'出现问题的飞机ID: {aircraft_num}')
-                    raise '!!!注意，求解子问题时出现非整数解!!!'
+                an, sol, at, op, ec = self.solve_sub_problem(aircraft_num)
+                self.add_column(aircraft_num, sol, at, route_optimal=op, execution_cost=ec)
             # 开始求解主问题
             if not self._add_route_reduce_cost:
                 break
@@ -470,3 +442,89 @@ class ColumnGeneration(object):
                     print(f'为飞机ID={cid+1}分配路径{i}')
             print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
+    def solve_sub_problem(self, aircraft_num: int):
+        edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
+        edge_execution_cost = self.edge_cost_list[aircraft_num]
+        edge2num_map = self.edge2num_map_list[aircraft_num]
+        adjacency_table = self.adjacency_table_list[aircraft_num]
+        for edge, edge_index in edge2num_map.items():
+            from_node_num, airm_node_num = edge
+            airm_adj_tab_item: AdjTabItem = adjacency_table[airm_node_num]
+            airm_node_info = airm_adj_tab_item.info
+            if not airm_node_info:
+                continue
+            airm_graph_node_num = airm_node_info[0]
+            if airm_graph_node_num < 0:
+                continue
+            graph_node_dual = self.flight_dual[airm_graph_node_num]
+            edge_cost[edge_index] -= graph_node_dual
+
+        sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
+                                 edge_cost)
+        sp_solver.add_mutex_constraint(self.flight_data.advance_flight_node_nums,
+                                       self.graph_node_index_list[aircraft_num])
+        sp_solver.solve()
+        path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
+        print('---')
+        print('路径执行成本:', path_execution_cost)
+        return aircraft_num, sp_solver.solution, adjacency_table, sp_solver.optimal, path_execution_cost
+
+    def run_parallel(self):
+        # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
+        self.generate_dep_arr_slot_matrix()
+        for aircraft_num in self.flight_data.aircraft_list.keys():
+            graph_node_list_cp = self.pre_traversal(aircraft_num)
+            self.topological_ordering(aircraft_num, graph_node_list_cp)
+            self.generate_association_matrix(aircraft_num)
+        data_saver = DataSaver(self.flight_data.aircraft_volume, self.flight_data.slot_capacity,
+                               self.flight_data.workspace_path + r"\solution")
+        # 开始主循环
+        start_time = current_time()
+        while True:
+            self._add_route_reduce_cost = list()
+            pool = ProcessPoolExecutor(max_workers=cpu_count() - 1)
+            task_list = []
+            for aircraft_num in self.flight_data.aircraft_list.keys():
+                task = pool.submit(self.solve_sub_problem, aircraft_num)
+                task_list.append(task)
+            pool.shutdown()
+            result_list = [task.result() for task in task_list]
+            for aircraft_num, solution, adj_table, optimal, execution_cost in result_list:
+                self.add_column(aircraft_num, solution, adj_table, route_optimal=optimal, execution_cost=execution_cost)
+            # 开始求解主问题
+            if not self._add_route_reduce_cost:
+                break
+            mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
+                                            self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
+                                            self.parking_used, self.airport_parking_capacity)
+            mp_solver.solve()
+            self.solution_x = mp_solver.solution_x
+            self.solution_y = mp_solver.solution_y
+            self.flight_dual = mp_solver.flight_node_dual
+            self.aircraft_dual = mp_solver.aircraft_dual
+            self.slot_dual = mp_solver.slot_dual
+            self.airfield_stoppage_dual = mp_solver.parking_dual
+            if not self.optimal_value_list or self.optimal_value_list[-1] - mp_solver.optimal > 0.1:
+                time_mark = current_time()
+                solution_info = SolutionInfo(self.graph_node_list, self.graph_node_strings, self.aircraft_route_nums,
+                                             cost=mp_solver.optimal, iter_num=self.iter_num,
+                                             running_time=time_mark - start_time)
+                solution_info.statistical_path_info(self.solution_x)
+                solution_info.statistical_cancel_info(self.solution_y)
+                data_saver.write_csv(solution_info.data_picked())
+            self.optimal_value_list.append(mp_solver.optimal)
+            print(f'------Iter Num {self.iter_num}------')
+            self.iter_num += 1
+            print('最优值:', mp_solver.optimal)
+            for i in range(len(self.solution_x)):
+                if self.solution_x[i]:
+                    cid = -1
+                    for j in range(len(self.aircraft_dual)):
+                        if i < sum(self.aircraft_route_nums[0:j + 1]):
+                            cid = j
+                            break
+                    print(f'为飞机ID={cid + 1}分配路径{i}')
+            print(f'飞机对偶值：{self.aircraft_dual}')
+            print('取消航班数:', sum(self.solution_y))
+        pass
+
