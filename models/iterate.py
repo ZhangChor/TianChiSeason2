@@ -371,7 +371,7 @@ class ColumnGeneration(object):
         self.aircraft_route_nums[aircraft_index] += 1
         self._add_route_reduce_cost.append(route_reduce_cost)
         print(f'为飞机ID={aircraft_num} 新增一条路径，包含航班数{sum(new_route)}，reduce cost={route_reduce_cost}')
-        self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
+        # self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
 
     def print_route_info(self, aircraft_num: int, route_num=0):
         aircraft_index = aircraft_num - 1
@@ -432,16 +432,9 @@ class ColumnGeneration(object):
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1
             print('最优值:', mp_solver.optimal)
-            for i in range(len(self.solution_x)):
-                if self.solution_x[i]:
-                    cid = -1
-                    for j in range(len(self.aircraft_dual)):
-                        if i < sum(self.aircraft_route_nums[0:j+1]):
-                            cid = j
-                            break
-                    print(f'为飞机ID={cid+1}分配路径{i}')
-            print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
+            self.iter_summary(start_time)
+
     def solve_sub_problem(self, aircraft_num: int):
         edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
         edge_execution_cost = self.edge_cost_list[aircraft_num]
@@ -516,15 +509,22 @@ class ColumnGeneration(object):
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1
             print('最优值:', mp_solver.optimal)
-            for i in range(len(self.solution_x)):
-                if self.solution_x[i]:
-                    cid = -1
-                    for j in range(len(self.aircraft_dual)):
-                        if i < sum(self.aircraft_route_nums[0:j + 1]):
-                            cid = j
-                            break
-                    print(f'为飞机ID={cid + 1}分配路径{i}')
-            print(f'飞机对偶值：{self.aircraft_dual}')
             print('取消航班数:', sum(self.solution_y))
-        pass
+            self.iter_summary(start_time)
+
+
+    def iter_summary(self, start_time:float):
+        output_str = "Running time:" +  str(timedelta(seconds=current_time()-start_time))
+        output_str += f" Iter num:{self.iter_num}"
+        output_str += " Opt={:.3f}".format(self.optimal_value_list[-1])
+        output_str += f" Route set={len(self.route)}" + "\n"
+
+        file_name = self.flight_data.workspace_path + r"\solution"
+        file_name += "\\cid" + str(self.flight_data.aircraft_volume) + f"slot{self.flight_data.slot_capacity}"
+        file_name += "_summary.txt"
+        with open(file_name, 'a') as txtfile:
+            if txtfile.tell() == 0:
+                txtfile.write(f"Aircraft volume={self.flight_data.aircraft_volume}" + '\n')
+            txtfile.write(output_str)
+
 
