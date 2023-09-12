@@ -10,7 +10,7 @@ from models.utils import Typhoon, TyphoonScene, SlotScene, MidstAirport
 class FlightData(object):
     def __init__(self, min_turn_time: timedelta, duration_start: datetime, duration_end: datetime,
                  max_lead_time: timedelta, max_domestic_delay: timedelta, max_foreign_delay: timedelta,
-                 split_time: timedelta, slot_capacity: int):
+                 split_time: timedelta, slot_capacity: int, workspace:str):
         self.min_turn_time = min_turn_time
         self.duration_start = duration_start
         self.duration_end = duration_end
@@ -23,7 +23,7 @@ class FlightData(object):
         self.slot_capacity = slot_capacity
 
         # read data
-        self.workspace_path = r"D:\workspace\TianChiSeason2"
+        self.workspace_path = workspace
         data_path = self.workspace_path + r"\data"
         self._flight_schedule = pd.read_csv(data_path + r'\flights_data.csv')
         self._airline_aircraft_ct = pd.read_csv(data_path + r'\airline_aircraft_ct.csv')

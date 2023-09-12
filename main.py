@@ -7,6 +7,7 @@ from models.iterate import ColumnGeneration
 from models.cplex_solver import ShortestPath
 
 if __name__ == '__main__':
+    workspace_path = r"D:\workspace\TianChiSeason2"
     min_turn_time = timedelta(minutes=50)
     duration_start = datetime(year=2017, month=5, day=6, hour=6)
     duration_end = datetime(year=2017, month=5, day=9, hour=0)
@@ -20,7 +21,7 @@ if __name__ == '__main__':
 
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
-                             split_time, slot_capacity)
+                             split_time, slot_capacity, workspace_path)
     AIRCRAFT_NUM = 5
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
