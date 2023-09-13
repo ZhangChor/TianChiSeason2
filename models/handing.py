@@ -99,7 +99,7 @@ class FlightData(object):
             graph_node.adjust_list[adjust_info.adjust_time] = adjust_info
         return graph_node
 
-    def selection_data(self, aircraft_id: int, start_time=None, end_time=None, allowed_adv=True):
+    def selection_data(self, aircraft_id: int, start_time=None, end_time=None):
         self.aircraft_volume = aircraft_id
         # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
         self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
@@ -138,6 +138,7 @@ class FlightData(object):
                     origin_flight['tpn'], origin_flight['sn'] = end_frame['联程旅客数'], end_frame['座位数']
                     origin_flight['fids'] = [end_frame['航班ID']]
                     origin_flight['cost'] = 0
+                    origin_flight['tmk'] = False
                     if end_frame['起飞时间'] >= self.duration_start:  # 恢复期开始前没有航班
                         origin_flight['ap'] = end_frame['起飞机场']
                         origin_flight['avt'] = end_frame['起飞时间'] - self.min_turn_time
@@ -182,6 +183,7 @@ class FlightData(object):
                     flight_info['pn'], flight_info['tpn'] = dataframe['旅客数'].sum(), dataframe['联程旅客数'].iloc[0]
                     flight_info['sn'], flight_info['para'] = dataframe['座位数'].sum(), dataframe['重要系数'].sum()
                     flight_info['cost'] = 0
+                    flight_info['tmk'] = False  # 台风标记，False表示不受台风影响，True表示受台风影响
                     flight_info['ma'] = None  # 中间航班信息
 
                     graph_node = GraphNode(self.graph_node_cnt, flight_info)
@@ -199,6 +201,7 @@ class FlightData(object):
                         else:
                             is_landing_forbid, is_takeoff_forbid = False, False
                         if is_landing_forbid or is_takeoff_forbid:
+                            flight_info['tmk'] = True
                             slots = self.slot_scene[landing_airport][0]
                             if flight_info['dom'] == '国内':
                                 # 尝试拉直
@@ -238,7 +241,7 @@ class FlightData(object):
                                 si = takeoff_fallin_slot.pop(0)
                                 si.fall_in.append((graph_node.key, si.start_time - turn_time))
 
-                            if allowed_adv and is_takeoff_forbid:
+                            if is_takeoff_forbid:
                                 # 尝试起飞提前
                                 earliest_advance_time = dataframe['起飞时间'].iloc[-1] - self.max_lead_time
                                 earliest_landing_time = earliest_advance_time - turn_time
@@ -296,6 +299,3 @@ class FlightData(object):
             graph_node_num = self._airport_num_to_graph_num_map[arrival_airport_num]
             return self.graph_node_list[graph_node_num]
 
-
-if __name__ == '__main__':
-    pass
