@@ -24,11 +24,11 @@ class FlightData(object):
 
         # read data
         self.workspace_path = workspace
-        data_path = self.workspace_path + r"\data"
-        self._flight_schedule = pd.read_csv(data_path + r'\flights_data.csv')
-        self._airline_aircraft_ct = pd.read_csv(data_path + r'\airline_aircraft_ct.csv')
-        self._flying_time_data = pd.read_csv(data_path + r'\flying_time_data.csv')
-        self._turn_time_ct = pd.read_csv(data_path + r'\turn_time_ct.csv')
+        data_path = self.workspace_path + r"/data"
+        self._flight_schedule = pd.read_csv(data_path + r'/flights_data.csv')
+        self._airline_aircraft_ct = pd.read_csv(data_path + r'/airline_aircraft_ct.csv')
+        self._flying_time_data = pd.read_csv(data_path + r'/flying_time_data.csv')
+        self._turn_time_ct = pd.read_csv(data_path + r'/turn_time_ct.csv')
 
         self.aircraft_volume = 0
         self.schedule = None
@@ -99,7 +99,7 @@ class FlightData(object):
             graph_node.adjust_list[adjust_info.adjust_time] = adjust_info
         return graph_node
 
-    def selection_data(self, aircraft_id: int, start_time=None, end_time=None):
+    def selection_data(self, aircraft_id: int, start_time=None, end_time=None, allowed_adv=True):
         self.aircraft_volume = aircraft_id
         # self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'].isin(aircraft_id)]
         self.schedule = self._flight_schedule[self._flight_schedule['飞机ID'] <= aircraft_id]
@@ -238,7 +238,7 @@ class FlightData(object):
                                 si = takeoff_fallin_slot.pop(0)
                                 si.fall_in.append((graph_node.key, si.start_time - turn_time))
 
-                            if is_takeoff_forbid:
+                            if allowed_adv and is_takeoff_forbid:
                                 # 尝试起飞提前
                                 earliest_advance_time = dataframe['起飞时间'].iloc[-1] - self.max_lead_time
                                 earliest_landing_time = earliest_advance_time - turn_time

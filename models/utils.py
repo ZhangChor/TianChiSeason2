@@ -404,7 +404,7 @@ class SolutionInfo(object):
     def data_picked(self):
         data = dict()
         data["Iter"] = self.iter_num
-        data["Time"] = self.running_time
+        data["Time"] = str(self.running_time)
         data["Scores"] = "{:.3f}".format(self.scores)
         data["Perf."] = self.performed_flights
         data["Cancel"] = self.flight_cancellation
@@ -440,7 +440,7 @@ class DataSaver(object):
 
     def write_csv(self, data_info: dict):
         self.data_list.append(data_info)
-        file_name = self.file_path + "\\cid" + str(self.aircraft_num) + f"slot{self.slot_capacity}" + ".csv"
+        file_name = self.file_path + "/cid" + str(self.aircraft_num) + f"slot{self.slot_capacity}" + ".csv"
         if len(self.data_list) == 1:
             self.field_name = self.data_list[0].keys()  # 使用第一个字典的keys作为列名
             with open(file_name, mode='w', newline='') as csv_file:

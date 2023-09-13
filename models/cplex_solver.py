@@ -25,10 +25,9 @@ class MasterProblemSolver(object):
         self._solver = Model(name="route assignment problem")
         if relaxation:
             self._x_list = self._solver.continuous_var_list(self._var_name_list_x, name='x', ub=1)
-            self._y_list = self._solver.continuous_var_list(self._var_name_list_y, name='y', ub=1)
         else:
             self._x_list = self._solver.binary_var_list(self._var_name_list_x, name='x')
-            self._y_list = self._solver.binary_var_list(self._var_name_list_y, name='y')
+        self._y_list = self._solver.continuous_var_list(self._var_name_list_y, name='y', ub=1)
         # 航班约束：每次航班最多仅能被选入解一次
         for j in range(self._flight_node_num):
             flight_ct = self._solver.sum(route[i][j] * self._x_list[i]
@@ -55,6 +54,11 @@ class MasterProblemSolver(object):
         # 目标函数
         self._solver.minimize(self._solver.sum(cost[i] * self._x_list[i] for i in range(self._route_num)) +
                               self._solver.sum(cancel[j] * self._y_list[j] for j in range(self._flight_node_num)))
+
+    def add_fix_int_var(self, solution_x: list):
+        for i in range(len(solution_x)):
+            if solution_x[i] == 1:
+                self._solver.add_constraint(self._x_list[i] == 1)
 
     def print_info(self):
         for j in range(self._flight_node_num):
@@ -160,20 +164,3 @@ class ShortestPath(object):
     @property
     def optimal(self) -> float:
         return self.sp.objective_value
-
-
-if __name__ == '__main__':
-    var_num_lt = [1, 1, 1]
-    cost = [2, 3, 2.5]
-    cancel = [4]*7
-    route = [[1, 1, 0, 0, 0, 0, 0],
-             [0, 0, 0, 1, 1, 0, 0],
-             [0, 0, 0, 0, 0, 1, 1]]
-    cplex_solver = MasterProblemSolver(route, cost, var_num_lt, cancel,[],[],[],[])
-    cplex_solver.print_info()
-    # cplex_solver.print_info()
-    cplex_solver.solve()
-    print('Optimal =', cplex_solver.optimal)
-    print('x =', cplex_solver.solution_x)
-    print('Aircraft dual =', cplex_solver.aircraft_dual)
-    print('Flight dual =', cplex_solver.flight_node_dual)

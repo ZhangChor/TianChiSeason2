@@ -348,7 +348,7 @@ class ColumnGeneration(object):
 
         route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
         if route_reduce_cost > 0:
-            print(f'飞机ID：{aircraft_num} 最短路径的reduce cost大于0, {route_reduce_cost}')
+            print(f'飞机ID={aircraft_num} 最短路径的RC>0, RC={route_reduce_cost}')
             return
         aircraft_index = aircraft_num - 1
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
@@ -358,7 +358,7 @@ class ColumnGeneration(object):
         slot_repeat = slot_used in self.slot_used[aircraft_route_set_start:aircraft_route_set_end]
         paring_repeat = parking_used in self.parking_used[aircraft_route_set_start:aircraft_route_set_end]
         if route_repeat and slot_repeat and paring_repeat:
-            print(f'飞机ID：{aircraft_num} 路径重复, {route_reduce_cost}')
+            print(f'飞机ID={aircraft_num}路径重复, RC={route_reduce_cost}')
             return
         # 插入新增路径
         ins_index = sum(self.aircraft_route_nums[:(aircraft_index + 1)])
@@ -370,7 +370,7 @@ class ColumnGeneration(object):
         self.route_reduce_costs.insert(ins_index, route_reduce_cost)
         self.aircraft_route_nums[aircraft_index] += 1
         self._add_route_reduce_cost.append(route_reduce_cost)
-        print(f'为飞机ID={aircraft_num} 新增一条路径，包含航班数{sum(new_route)}，reduce cost={route_reduce_cost}')
+        print(f'为飞机ID={aircraft_num}新增一条路径, RC={route_reduce_cost}')
         # self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
 
     def print_route_info(self, aircraft_num: int, route_num=0):
@@ -391,7 +391,7 @@ class ColumnGeneration(object):
         print(f'飞机ID={aircraft_num}的第{route_num}条路径信息：')
         print(route_fids)
 
-    def run(self):
+    def run(self, parallel=False):
         # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
         self.generate_dep_arr_slot_matrix()
         for aircraft_num in self.flight_data.aircraft_list.keys():
@@ -399,20 +399,41 @@ class ColumnGeneration(object):
             self.topological_ordering(aircraft_num, graph_node_list_cp)
             self.generate_association_matrix(aircraft_num)
         data_saver = DataSaver(self.flight_data.aircraft_volume, self.flight_data.slot_capacity,
-                               self.flight_data.workspace_path + r"\solution")
+                               self.flight_data.workspace_path + r"/solution")
         # 开始主循环
         start_time = current_time()
-        while True:
+        quit_loop = False
+        while not quit_loop:
             self._add_route_reduce_cost = list()
-            for aircraft_num in self.flight_data.aircraft_list.keys():
-                an, sol, at, op, ec = self.solve_sub_problem(aircraft_num)
-                self.add_column(aircraft_num, sol, at, route_optimal=op, execution_cost=ec)
+            if parallel:
+                pool = ProcessPoolExecutor(max_workers=cpu_count() - 1)
+                task_list = []
+                for aircraft_num in self.flight_data.aircraft_list.keys():
+                    task = pool.submit(self.solve_sub_problem, aircraft_num)
+                    task_list.append(task)
+                pool.shutdown()
+                result_list = [task.result() for task in task_list]
+                for aircraft_num, solution, adj_table, optimal, execution_cost in result_list:
+                    self.add_column(aircraft_num, solution, adj_table, route_optimal=optimal,
+                                    execution_cost=execution_cost)
+            else:
+                for aircraft_num in self.flight_data.aircraft_list.keys():
+                    an, sol, at, op, ec = self.solve_sub_problem(aircraft_num)
+                    self.add_column(aircraft_num, sol, at, route_optimal=op, execution_cost=ec)
             # 开始求解主问题
             if not self._add_route_reduce_cost:
+                quit_loop = True
+            if not quit_loop:
+                mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
+                                                self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
+                                                self.parking_used, self.airport_parking_capacity)
+            elif not self.is_solution_int():
+                mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
+                                                self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
+                                                self.parking_used, self.airport_parking_capacity, relaxation=False)
+                mp_solver.add_fix_int_var(self.solution_x)
+            else:
                 break
-            mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
-                                            self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
-                                            self.parking_used, self.airport_parking_capacity)
             mp_solver.solve()
             self.solution_x = mp_solver.solution_x
             self.solution_y = mp_solver.solution_y
@@ -424,7 +445,7 @@ class ColumnGeneration(object):
                 time_mark = current_time()
                 solution_info = SolutionInfo(self.graph_node_list, self.graph_node_strings, self.aircraft_route_nums,
                                              cost=mp_solver.optimal, iter_num=self.iter_num,
-                                             running_time=time_mark-start_time)
+                                             running_time=time_mark - start_time)
                 solution_info.statistical_path_info(self.solution_x)
                 solution_info.statistical_cancel_info(self.solution_y)
                 data_saver.write_csv(solution_info.data_picked())
@@ -434,6 +455,10 @@ class ColumnGeneration(object):
             print('最优值:', mp_solver.optimal)
             print('取消航班数:', sum(self.solution_y))
             self.iter_summary(start_time)
+            if quit_loop:
+                break
+        # 添加结束标志
+        self.iter_summary(start_time, stop=True)
 
     def solve_sub_problem(self, aircraft_num: int):
         edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
@@ -458,73 +483,30 @@ class ColumnGeneration(object):
                                        self.graph_node_index_list[aircraft_num])
         sp_solver.solve()
         path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
-        print('---')
+        # print('---')
         print('路径执行成本:', path_execution_cost)
         return aircraft_num, sp_solver.solution, adjacency_table, sp_solver.optimal, path_execution_cost
 
-    def run_parallel(self):
-        # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
-        self.generate_dep_arr_slot_matrix()
-        for aircraft_num in self.flight_data.aircraft_list.keys():
-            graph_node_list_cp = self.pre_traversal(aircraft_num)
-            self.topological_ordering(aircraft_num, graph_node_list_cp)
-            self.generate_association_matrix(aircraft_num)
-        data_saver = DataSaver(self.flight_data.aircraft_volume, self.flight_data.slot_capacity,
-                               self.flight_data.workspace_path + r"\solution")
-        # 开始主循环
-        start_time = current_time()
-        while True:
-            self._add_route_reduce_cost = list()
-            pool = ProcessPoolExecutor(max_workers=cpu_count() - 1)
-            task_list = []
-            for aircraft_num in self.flight_data.aircraft_list.keys():
-                task = pool.submit(self.solve_sub_problem, aircraft_num)
-                task_list.append(task)
-            pool.shutdown()
-            result_list = [task.result() for task in task_list]
-            for aircraft_num, solution, adj_table, optimal, execution_cost in result_list:
-                self.add_column(aircraft_num, solution, adj_table, route_optimal=optimal, execution_cost=execution_cost)
-            # 开始求解主问题
-            if not self._add_route_reduce_cost:
-                break
-            mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
-                                            self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
-                                            self.parking_used, self.airport_parking_capacity)
-            mp_solver.solve()
-            self.solution_x = mp_solver.solution_x
-            self.solution_y = mp_solver.solution_y
-            self.flight_dual = mp_solver.flight_node_dual
-            self.aircraft_dual = mp_solver.aircraft_dual
-            self.slot_dual = mp_solver.slot_dual
-            self.airfield_stoppage_dual = mp_solver.parking_dual
-            if not self.optimal_value_list or self.optimal_value_list[-1] - mp_solver.optimal > 0.1:
-                time_mark = current_time()
-                solution_info = SolutionInfo(self.graph_node_list, self.graph_node_strings, self.aircraft_route_nums,
-                                             cost=mp_solver.optimal, iter_num=self.iter_num,
-                                             running_time=time_mark - start_time)
-                solution_info.statistical_path_info(self.solution_x)
-                solution_info.statistical_cancel_info(self.solution_y)
-                data_saver.write_csv(solution_info.data_picked())
-            self.optimal_value_list.append(mp_solver.optimal)
-            print(f'------Iter Num {self.iter_num}------')
-            self.iter_num += 1
-            print('最优值:', mp_solver.optimal)
-            print('取消航班数:', sum(self.solution_y))
-            self.iter_summary(start_time)
+    def iter_summary(self, start_time: float, stop=False):
+        output_str = f"Iter num:{self.iter_num}" + '\t'
+        output_str += "Running time:" + str(timedelta(seconds=current_time() - start_time)) + '\t'
+        output_str += f"Opt={int(self.optimal_value_list[-1]+0.5)}" + '  '
+        output_str += f"Route set={len(self.route)}" + "\n"
 
-
-    def iter_summary(self, start_time:float):
-        output_str = "Running time:" +  str(timedelta(seconds=current_time()-start_time))
-        output_str += f" Iter num:{self.iter_num}"
-        output_str += " Opt={:.3f}".format(self.optimal_value_list[-1])
-        output_str += f" Route set={len(self.route)}" + "\n"
-
-        file_name = self.flight_data.workspace_path + r"\solution"
-        file_name += "\\cid" + str(self.flight_data.aircraft_volume) + f"slot{self.flight_data.slot_capacity}"
+        file_name = self.flight_data.workspace_path + r"/solution"
+        file_name += "/cid" + str(self.flight_data.aircraft_volume) + f"slot{self.flight_data.slot_capacity}"
         file_name += "_summary.txt"
         with open(file_name, 'a') as txtfile:
             if txtfile.tell() == 0:
                 txtfile.write(f"Aircraft volume={self.flight_data.aircraft_volume}" + '\n')
-            txtfile.write(output_str)
+            if not stop:
+                txtfile.write(output_str)
+            else:
+                txtfile.write("------Iter Stop!------")
 
+    def is_solution_int(self) -> bool:
+        for i in self.solution_x:
+            if i != int(i):
+                return False
+        return True
 
