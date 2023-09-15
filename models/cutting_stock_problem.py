@@ -27,7 +27,7 @@ class MinPattern(object):
 
 
 if __name__ == '__main__':
-    pattern = [[1, 0, 0],
+    pattern = [[2, 0, 0],
                [0, 1, 0],
                [0, 0, 1]]  # 模式集合
     cost_of_pattern = [5, 5, 5]  # 模式对应的花费

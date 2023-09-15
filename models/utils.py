@@ -201,7 +201,7 @@ class AdjustItem(object):
         self.suc = []  # 存放后继航班的node key与adjust time
 
     def __repr__(self):
-        return f'{self.adjust_time} {self.midst_airport.arrival_time} {self.midst_airport.departure_time}'
+        return f'{self.departure_time}->{self.arrival_time}'
 
     def mark(self):
         return self.node_num, timedelta_minutes(self.adjust_time)
