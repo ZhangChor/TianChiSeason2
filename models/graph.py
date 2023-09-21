@@ -49,7 +49,7 @@ class Graph(object):
         self.typhoon_scene: dict = flight_data.typhoon_scene
         self.slot_scene: SlotScene = flight_data.slot_scene
         self.turn_time: dict = flight_data.turn_time
-        self.advance_flight_node_nums = flight_data.advance_flight_node_nums
+        self.advance_flight_node_nums = flight_data.mutex_flight_node_nums
         for tip_node in flight_data.aircraft_list.values():
             self.queue.append((tip_node.key, tip_node.adjust_list[timedelta(0)].adjust_time))
         self.type_change_map = {'12': 0, '13': 2, '14': 4, '21': 0.5, '23': 2, '24': 4,
@@ -202,7 +202,7 @@ class Graph(object):
             current_adjust_item.suc.append((alter_node_num, afa.adjust_time))
         if (alter_node_num, afa.adjust_time) not in self.queue:
             self.queue.append((alter_node_num, afa.adjust_time))
-        print(f"{edge_mark}->{(alter_node_num, afa.adjust_time)}")
+        # print(f"{edge_mark}->{(alter_node_num, afa.adjust_time)}")
 
     def _typhoon_scene_adj(self, is_takeoff_forbid_t: bool, is_landing_forbid_t: bool, alter_node_num: int,
                            alter_flight_dp: int, alter_flight_dpt: datetime, alter_flight_ap: int,
@@ -295,14 +295,20 @@ class Graph(object):
     def _calcul_min_delay(self, current_time: datetime, alter_flight_dpt: datetime, turn_time: timedelta,
                           max_delay_time: timedelta, alter_node_num: int, current_node_num: int,
                           current_adjust_item: AdjustItem, endorsement_num: int):
-        if turn_time <= alter_flight_dpt - current_time:  # 可以直接连接
+        max_delay_time = timedelta(hours=6)
+        alter_node: GraphNode = self.graph_node_list[alter_node_num]
+        alter_flight_info = alter_node.flight_info
+        current_node: GraphNode = self.graph_node_list[current_node_num]
+        current_flight_info = current_node.flight_info
+        if turn_time <= alter_flight_dpt - current_time or \
+                (current_flight_info['cid'] == alter_flight_info['cid'] and
+                 timedelta(minutes=40) <= alter_flight_dpt - current_time):  # 可以直接连接
             delay_time = timedelta(minutes=0)
         elif turn_time <= alter_flight_dpt - current_time + max_delay_time:  # 可以通过延误连接
             delay_time = current_time - alter_flight_dpt + turn_time
         else:  # 无法连接
             return
-        alter_node: GraphNode = self.graph_node_list[alter_node_num]
-        alter_flight_info = alter_node.flight_info
+
         alter_adjust_list = alter_node.adjust_list
         if delay_time in alter_adjust_list.keys():
             self._calcul_cost(alter_adjust_list[delay_time], current_node_num, current_adjust_item, alter_node_num,
@@ -312,6 +318,8 @@ class Graph(object):
                                  alter_flight_info['avt'] + delay_time, delay_time)
         self.flight_data.adjust_item_cnt += 1
         alter_adjust_list[delay_time] = adjust_item
+        if len(alter_adjust_list) > 1 and alter_node_num >= 0:
+            self.flight_data.mutex_flight_node_nums.add(alter_node_num)
         self._calcul_cost(adjust_item, current_node_num, current_adjust_item, alter_node_num, endorsement_num)
 
     def build_graph(self):

@@ -123,17 +123,15 @@ class ShortestPath(object):
         self.sp.minimize(self.sp.sum(edge_cost[j] * self.var_list[j] for j in range(self.edge_num)))
         self.result = None
 
-    def add_mutex_constraint(self, advance_flight_node_nums: list, graph_node_index: dict):
+    def add_mutex_constraint(self, mutex_graph_node_edges: dict):
         k = 0
-        for af_node_num in advance_flight_node_nums:
-            if af_node_num in graph_node_index.keys():
-                node_ct = [0] * self.edge_num
-                indexs = graph_node_index[af_node_num]
-                for i in indexs:
-                    node_ct[i] = 1
-                self.sp.add_constraint(self.sp.sum(node_ct[j] * self.var_list[j] for j in range(self.edge_num)) <= 1,
-                                       ctname=f'cnode{k}')
-                k += 1
+        for graph_node_num, edges in mutex_graph_node_edges.items():
+            node_ct = [0] * self.edge_num
+            for i in edges:
+                node_ct[i] = 1
+            self.sp.add_constraint(self.sp.sum(node_ct[j] * self.var_list[j] for j in range(self.edge_num)) <= 1,
+                                   ctname=f'mut_flight{k}')
+            k += 1
 
     def print_info(self):
         for j in range(self.node_num):
@@ -164,3 +162,87 @@ class ShortestPath(object):
     @property
     def optimal(self) -> float:
         return self.sp.objective_value
+
+
+class MultiFlowModel(object):
+    def __init__(self, ass_matrix: list[list], flow_ct: list, edge_cost: list, cancel_cost: list):
+        self.node_num = len(flow_ct)  # number of node
+        self.edge_num = len(edge_cost)  # number of edge
+        self.cancel_num = len(cancel_cost)
+        self._var_x_name_list = [f'e{j}' for j in range(self.edge_num)]
+        self._var_y_name_list = [f'n{i}' for i in range(self.cancel_num)]
+        self.mfp = Model(name="multi flow model problem")
+        self.var_x_list = self.mfp.binary_var_list(self._var_x_name_list, name='x')
+        self.var_y_list = self.mfp.binary_var_list(self._var_y_name_list, name='y')
+        # 流平衡约束
+        for i in range(self.node_num):
+            row = ass_matrix[i]
+            self.mfp.add_constraint(self.mfp.sum(row[j] * self.var_x_list[j] for j in range(self.edge_num)) == flow_ct[i],
+                                    ctname=f'node{i}')
+        # 取消成本
+        for i in range(self.cancel_num):
+            row = ass_matrix[i + 1]
+            ads_row = list(map(lambda x: abs(x), row))
+            self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] for j in range(self.edge_num)) +
+                                    self.var_y_list[i] * 2 == 2, ctname=f'cancel_node{i + 1}')
+        self.mfp.minimize(self.mfp.sum(edge_cost[j] * self.var_x_list[j] for j in range(self.edge_num)) +
+                          self.mfp.sum(cancel_cost[j] * self.var_y_list[j] for j in range(len(cancel_cost))))
+        self.result = None
+
+    def add_mutex_constraint(self, mutex_graph_node_edges: dict):
+        # 顶点互斥约束
+        k = 0
+        for graph_node_num, edges in mutex_graph_node_edges.items():
+            node_ct = [0] * self.edge_num
+            for i in edges:
+                node_ct[i] = 1
+            self.mfp.add_constraint(self.mfp.sum(node_ct[j] * self.var_x_list[j] for j in range(self.edge_num)) <= 1,
+                                    ctname=f'mut_flight{k}')
+            k += 1
+
+    def print_info(self):
+        for j in range(self.node_num):
+            print(self.mfp.get_constraint_by_name('node%s' % j))
+        for j in range(1, self.cancel_num+1):
+            print(self.mfp.get_constraint_by_name('cancel_node%s' % j))
+
+        # 输出目标函数
+        print("Objective:")
+        print(self.mfp.get_objective_expr())
+        self.mfp.print_information()  # 输出模型信息
+
+    def solve(self):
+        self.result = self.mfp.solve()
+        if not self.result:
+            self.result = self.mfp.solve(log_output=True)  # 用来检查是否存在不可行约束
+            print("当前问题无解")
+            return None
+
+    @property
+    def solution_x(self) -> list:
+        return [self.result.get_value('x_' + s) for s in self._var_x_name_list]
+
+    @property
+    def solution_y(self) -> list:
+        return [self.result.get_value('y_' + s) for s in self._var_y_name_list]
+
+    @property
+    def optimal(self) -> float:
+        return self.mfp.objective_value
+
+
+if __name__ == "__main__":
+    A = [[1, 1, 1, 0, 0, 0],
+         [-1, 0, 0, 1, 0, 0],
+         [0, -1, 0, 0, 1, 0],
+         [0, 0, -1, -1, 0, 1],
+         [0, 0, 0, 0, -1, -1]]
+    b = [2, 0, 0, 0, -2]
+    c = [2, 1, -3, 0, 2, 2]
+    d = [2, 2, 2]
+    sl = MultiFlowModel(A, b, c, d)
+    sl.print_info()
+    sl.solve()
+    print(sl.optimal)
+    print(sl.solution_x)
+    print(sl.solution_y)

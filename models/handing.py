@@ -49,7 +49,7 @@ class FlightData(object):
         self.airport_stop_tp = dict()  # 机场停机类型数
         self.destination_airport = dict()  # 记录每架飞机的目的机场
         self._airport_num_to_graph_num_map = dict()
-        self.advance_flight_node_nums = set()  # 统计能够进行提前的航班的node num
+        self.mutex_flight_node_nums = set()  # 统计可能产生节点互斥的航班的node num
 
         self.flying_time = dict()
         for i in range(len(self._flying_time_data)):
@@ -252,7 +252,7 @@ class FlightData(object):
                                     takeoff_fallin_slot = slots.takeoff_slot.midst_eq(earliest_advance_time,
                                                                                       slot_end_time)
                                     graph_node = self.adjust_through_flight(graph_node, takeoff_fallin_slot, dataframe)
-                                    self.advance_flight_node_nums.add(self.graph_node_cnt)
+                                    self.mutex_flight_node_nums.add(self.graph_node_cnt)
 
                         through_flight.append(graph_node.key)
                     else:

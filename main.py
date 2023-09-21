@@ -8,7 +8,7 @@ from time import time as current_time
 from models.handing import FlightData
 from models.graph import Graph
 from models.iterate import ColumnGeneration
-from models.cplex_solver import ShortestPath
+
 
 if __name__ == '__main__':
     workspace_path = r"D:/workspace/TianChiSeason2"
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity, workspace_path)
-    AIRCRAFT_NUM = 3
+    AIRCRAFT_NUM = 5
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -61,4 +61,4 @@ if __name__ == '__main__':
                                        (25, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 11),
                                        (57, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 7)]
     cg.add_airport_parking(airport_parking_constraint_list)
-    cg.run(parallel=True)
+    cg.run_cg(parallel=True)

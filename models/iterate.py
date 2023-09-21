@@ -34,7 +34,7 @@ class ColumnGeneration(object):
         self.ass_matrix_list = dict()  # 储存每架飞机的邻接矩阵
         self.edge_cost_list = dict()  # 储存每架飞机边的执行花费
         self.node_attr_list = dict()  # 存储每架飞机的node的出入度情况
-        self.graph_node_index_list = dict()
+        self.mutex_graph_node_edge_list = dict()
 
         self.exceeded_slots = list()  # 储存落入数量超过容量的slot信息
         self.exceeded_slots_capacity = list()  # 储存落入数量超过容量的slot的容量
@@ -139,7 +139,7 @@ class ColumnGeneration(object):
         edge2num_map: dict[tuple[int, int], int] = dict()
         edge_cnt = 0
 
-        graph_node_index: dict[int, list] = dict()
+        mutex_graph_node_edges = dict()  # 存放一个graph node的所有调整方案的所有后继边
 
         init_mark = (-aircraft_num, timedelta(minutes=0))
         queue = [init_mark]
@@ -172,8 +172,8 @@ class ColumnGeneration(object):
                 destination_airport.append(current_mark)
             top_order_ls.append(current_mark)
             queue.remove(current_mark)
-            num = node2num_map[current_mark]
-            adj_table_item = adjacency_table[num]
+            current_num = node2num_map[current_mark]
+            adj_table_item = adjacency_table[current_num]
 
             # 加入后继
             for suc_mark in current_adjust_item.suc:
@@ -187,22 +187,23 @@ class ColumnGeneration(object):
                 if suc_mark not in node2num_map.keys():
                     node2num_map[suc_mark] = node_cnt
                     suc_adj_table_item = AdjTabItem(num=node_cnt, info=suc_mark)
-                    if suc_node_num not in graph_node_index.keys():
-                        graph_node_index[suc_node_num] = [node_cnt]
-                    else:
-                        graph_node_index[suc_node_num].append(node_cnt)
                     adjacency_table.append(suc_adj_table_item)
                     node_cnt += 1
                 suc_mark_num = node2num_map[suc_mark]
                 suc_adj_table_item = adjacency_table[suc_mark_num]
                 adj_table_item.suc.append(suc_mark_num)
-                suc_adj_table_item.pre.append(num)
+                suc_adj_table_item.pre.append(current_num)
 
                 if suc_mark not in queue:
                     queue.append(suc_mark)
-                edge = (num, node2num_map[suc_mark])
+                edge = (current_num, node2num_map[suc_mark])
                 edge_ls.append(edge)
                 edge2num_map[edge] = edge_cnt
+                if current_node_num in self.flight_data.mutex_flight_node_nums:
+                    if current_node_num not in mutex_graph_node_edges.keys():
+                        mutex_graph_node_edges[current_node_num] = [edge_cnt]
+                    else:
+                        mutex_graph_node_edges[current_node_num].append(edge_cnt)
                 edge_cnt += 1
             # 删除当前复制节点的后继连接边与后继复制节点的前驱连接边
             while current_adjust_item.suc:
@@ -246,7 +247,7 @@ class ColumnGeneration(object):
         self.edge_ls_list[aircraft_num] = edge_ls
         self.edge2num_map_list[aircraft_num] = edge2num_map
 
-        self.graph_node_index_list[aircraft_num] = graph_node_index
+        self.mutex_graph_node_edge_list[aircraft_num] = mutex_graph_node_edges
 
     def generate_association_matrix(self, aircraft_num: int):
         adjacency_table = self.adjacency_table_list[aircraft_num]
@@ -347,8 +348,8 @@ class ColumnGeneration(object):
                     parking_used[self.airport_parking_map[airm_flight_info['dp']]] = 1
 
         route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
-        if route_reduce_cost > 0:
-            print(f'飞机ID={aircraft_num} 最短路径的RC>0, RC={route_reduce_cost}')
+        if route_reduce_cost >= 0:
+            print(f'飞机ID={aircraft_num} 最短路径的RC>=0, RC={route_reduce_cost}')
             return
         aircraft_index = aircraft_num - 1
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
@@ -371,7 +372,7 @@ class ColumnGeneration(object):
         self.aircraft_route_nums[aircraft_index] += 1
         self._add_route_reduce_cost.append(route_reduce_cost)
         print(f'为飞机ID={aircraft_num}新增一条路径, RC={route_reduce_cost}')
-        # self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
+        self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
 
     def print_route_info(self, aircraft_num: int, route_num=0):
         aircraft_index = aircraft_num - 1
@@ -391,7 +392,7 @@ class ColumnGeneration(object):
         print(f'飞机ID={aircraft_num}的第{route_num}条路径信息：')
         print(route_fids)
 
-    def run(self, parallel=False):
+    def run_cg(self, parallel=False):
         # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
         self.generate_dep_arr_slot_matrix()
         for aircraft_num in self.flight_data.aircraft_list.keys():
@@ -478,10 +479,8 @@ class ColumnGeneration(object):
             graph_node_dual = self.flight_dual[airm_graph_node_num]
             edge_cost[edge_index] -= graph_node_dual
 
-        sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num],
-                                 edge_cost)
-        sp_solver.add_mutex_constraint(self.flight_data.advance_flight_node_nums,
-                                       self.graph_node_index_list[aircraft_num])
+        sp_solver = ShortestPath(self.ass_matrix_list[aircraft_num], self.node_attr_list[aircraft_num], edge_cost)
+        sp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list[aircraft_num])
         sp_solver.solve()
         path_execution_cost = dot_sum(edge_execution_cost, sp_solver.solution)
         # print('---')
@@ -504,10 +503,26 @@ class ColumnGeneration(object):
                 txtfile.write(output_str)
             else:
                 txtfile.write("------Iter Stop!------" + '\n')
+
     @property
     def is_solution_int(self) -> bool:
         for i in self.solution_x:
             if i != int(i):
                 return False
         return True
+
+    def run_mf(self):
+        """
+        对比实验，使用多商品流模型
+        :return:
+        """
+        # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
+        self.generate_dep_arr_slot_matrix()
+        for aircraft_num in self.flight_data.aircraft_list.keys():
+            graph_node_list_cp = self.pre_traversal(aircraft_num)
+            self.topological_ordering(aircraft_num, graph_node_list_cp)
+            self.generate_association_matrix(aircraft_num)
+
+        start_time = current_time()
+        pass
 
