@@ -172,19 +172,21 @@ class MultiFlowModel(object):
         self._var_x_name_list = [f'e{j}' for j in range(self.edge_num)]
         self._var_y_name_list = [f'n{i}' for i in range(self.cancel_num)]
         self.mfp = Model(name="multi flow model problem")
-        self.var_x_list = self.mfp.binary_var_list(self._var_x_name_list, name='x')
-        self.var_y_list = self.mfp.binary_var_list(self._var_y_name_list, name='y')
+        self.var_x_list = self.mfp.continuous_var_list(self._var_x_name_list, name='x')
+        self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y')
         # 流平衡约束
         for i in range(self.node_num):
             row = ass_matrix[i]
-            self.mfp.add_constraint(self.mfp.sum(row[j] * self.var_x_list[j] for j in range(self.edge_num)) == flow_ct[i],
-                                    ctname=f'node{i}')
+            self.mfp.add_constraint(
+                self.mfp.sum(row[j] * self.var_x_list[j] for j in range(self.edge_num)) == flow_ct[i],
+                ctname=f'node{i}')
         # 取消成本
         for i in range(self.cancel_num):
-            row = ass_matrix[i + 1]
+            row = ass_matrix[i]
             ads_row = list(map(lambda x: abs(x), row))
-            self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] for j in range(self.edge_num)) +
-                                    self.var_y_list[i] * 2 == 2, ctname=f'cancel_node{i + 1}')
+            if (not list_ge(row, [0]*self.edge_num)) and (not list_le(row, [0]*self.edge_num)):
+                self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] for j in range(self.edge_num)) +
+                                        self.var_y_list[i] * 2 == 2, ctname=f'cancel_node{i}')
         self.mfp.minimize(self.mfp.sum(edge_cost[j] * self.var_x_list[j] for j in range(self.edge_num)) +
                           self.mfp.sum(cancel_cost[j] * self.var_y_list[j] for j in range(len(cancel_cost))))
         self.result = None
@@ -203,7 +205,7 @@ class MultiFlowModel(object):
     def print_info(self):
         for j in range(self.node_num):
             print(self.mfp.get_constraint_by_name('node%s' % j))
-        for j in range(1, self.cancel_num+1):
+        for j in range(self.cancel_num):
             print(self.mfp.get_constraint_by_name('cancel_node%s' % j))
 
         # 输出目标函数
@@ -231,17 +233,49 @@ class MultiFlowModel(object):
         return self.mfp.objective_value
 
 
+def list_le(lista: list, listb: list):
+    return all(a <= b for a, b in zip(lista, listb))
+
+
+def list_ge(lista: list, listb: list):
+    return all(a >= b for a, b in zip(lista, listb))
+
+
 if __name__ == "__main__":
-    A = [[1, 1, 1, 0, 0, 0],
-         [-1, 0, 0, 1, 0, 0],
-         [0, -1, 0, 0, 1, 0],
-         [0, 0, -1, -1, 0, 1],
-         [0, 0, 0, 0, -1, -1]]
-    b = [2, 0, 0, 0, -2]
-    c = [2, 1, -3, 0, 2, 2]
-    d = [2, 2, 2]
+    # %%
+    # A = [[1, 1, 1, 0, 0, 0],
+    #      [-1, 0, 0, 1, 0, 0],
+    #      [0, -1, 0, 0, 1, 0],
+    #      [0, 0, -1, -1, 0, 1],
+    #      [0, 0, 0, 0, -1, -1]]
+    # b = [2, 0, 0, 0, -2]
+    # c = [2, 1, -3, 0, 2, 2]
+    # d = [2, 2, 2]
+    # sl = MultiFlowModel(A, b, c, d)
+    # sl.print_info()
+    # sl.solve()
+    # print(sl.optimal)
+    # print(sl.solution_x)
+    # print(sl.solution_y)
+    # %%
+    A = [[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+         [-1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [0, -1, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, -1, 1, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0],
+         [0, 0, 0, 0, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, -1, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, 1, 1, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 1],
+         [0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1]]
+    b = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1]
+    c = [0, 2, 0, 0, 2, 4, 2, 0, 0, 0, 2, 1, 0, 1, 0, 2, 3]
+    d = [0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0]
     sl = MultiFlowModel(A, b, c, d)
-    sl.print_info()
+    # sl.print_info()
     sl.solve()
     print(sl.optimal)
     print(sl.solution_x)

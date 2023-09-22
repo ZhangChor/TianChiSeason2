@@ -295,6 +295,7 @@ class Graph(object):
     def _calcul_min_delay(self, current_time: datetime, alter_flight_dpt: datetime, turn_time: timedelta,
                           max_delay_time: timedelta, alter_node_num: int, current_node_num: int,
                           current_adjust_item: AdjustItem, endorsement_num: int):
+        # 将最大延误时间设定的越高，图越大，运算时间越长，但解的效果不一定明显提升，这里设置为6小时，避免图无限的增大
         max_delay_time = timedelta(hours=6)
         alter_node: GraphNode = self.graph_node_list[alter_node_num]
         alter_flight_info = alter_node.flight_info
