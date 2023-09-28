@@ -1,6 +1,8 @@
 from pickle import dumps, loads
 from datetime import timedelta
 from time import time as current_time
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 
 from models.graph import Graph
 from models.handing import FlightData
@@ -9,8 +11,7 @@ from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotIte
 from models.utils import AirportParkingScene, AirfieldStoppages
 from models.utils import SolutionInfo, DataSaver
 from models.cplex_solver import ShortestPath, MasterProblemSolver
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import cpu_count
+
 
 
 def deep_copy(data):
@@ -349,7 +350,7 @@ class ColumnGeneration(object):
 
         route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
         if route_reduce_cost >= 0:
-            print(f'飞机ID={aircraft_num} 最短路径的RC>=0, RC={route_reduce_cost}')
+            print(f'飞机ID={aircraft_num}最短路径的RC>=0, RC={route_reduce_cost}')
             return
         aircraft_index = aircraft_num - 1
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
@@ -392,7 +393,7 @@ class ColumnGeneration(object):
         print(f'飞机ID={aircraft_num}的第{route_num}条路径信息：')
         print(route_fids)
 
-    def run_cg(self, parallel=False):
+    def run(self, parallel=False):
         # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
         self.generate_dep_arr_slot_matrix()
         for aircraft_num in self.flight_data.aircraft_list.keys():

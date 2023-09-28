@@ -131,7 +131,6 @@ class Graph(object):
                                                    max_delay_time)
                             self._trying_connect(alter_node_num, alter_flight_node, turn_time, current_time,
                                                  current_node_num, current_adjust_item, endorsement_num)
-                            pass
                         else:
                             # 计算最小延误，根据调整时间判断是否已经计算过
                             self._closed_scene_adj(is_takeoff_forbid_t, is_landing_forbid_t, alter_flight_dp,

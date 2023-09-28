@@ -3,7 +3,11 @@ from models.graph import Graph
 from models.handing import FlightData
 from models.utils import AirportParkingScene, AirfieldStoppages
 from models.utils import GraphNode, AirportSlot, SlotItem, AdjTabItem, AdjustItem
-from models.iterate import deep_copy
+from models.cplex_solver import MultiFlowModel
+
+
+def list_reverse(nums):
+    return list(map(list, zip(*nums)))
 
 
 class MultiFlowProblem(object):
@@ -14,18 +18,27 @@ class MultiFlowProblem(object):
         self.airport_parking_scene = AirportParkingScene()
         self.airport_parking_map = dict()
         self.airport_parking_capacity = list()
-        self.top_order = dict()  # 可执行航班的拓扑排序
-        self.adjacency_table_list = dict()  # 储存邻接表
-        self.node2num_map_list = dict()  # 储存可执行航班到在邻接矩阵中的行的指标
-        self.edge_ls_list = dict()  # 储存可执行边
-        self.edge2num_map_list = dict()  # 储存可执行边在邻接矩阵中的列的指标
-        self.ass_matrix_list = dict()  # 储存邻接矩阵
-        self.edge_cost_list = dict()  # 储存边的执行花费
-        self.node_attr_list = dict()  # 存储node的出入度情况
+        self.adjacency_tabl = dict()  # 储存邻接表
+        self.node2num_map = dict()  # 储存可执行航班到在邻接矩阵中的行的指标
+        self.num2node_map = dict()
+        self.edge_ls = dict()  # 储存可执行边
+        self.edge2num_map = dict()  # 储存可执行边在邻接矩阵中的列的指标
+        self.ass_matrix = list()  # 储存邻接矩阵
+        self.edge_cost_list = list()  # 储存边的执行花费
+        self.node_attr_list = list()  # 存储node的出入度情况
+        self.cancel_ct_list = list()  # 储存取消约束
+        self.node_cancel_cost = list()  # node取消成本
         self.mutex_graph_node_edge_list = dict()
         self.exceeded_slots = list()  # 储存落入数量超过容量的slot信息
         self.exceeded_slots_capacity = list()  # 储存落入数量超过容量的slot的容量
         self.exceeded_slots_map = dict()  # 储存落入数据超过容量的slot的标号
+
+        self.optimal = None
+        self.solution_x = list()
+        self.solution_y = list()
+        self.all_edge_string = list()
+        self.graph_node_string = set()
+        self.fids_string = list()
 
         flight_cancel_cost = []
         for node_num, graph_node in self.flight_data.graph_node_list.items():
@@ -68,126 +81,92 @@ class MultiFlowProblem(object):
                     self.exceeded_slots_map[slot_mark] = exceeded_slots_num
                     exceeded_slots_num += 1
 
-    def generate_association_matrix(self):
+    def generate_association_matrix(self, aircraft_num: int):
         """
         遍历图中所有边，并生成相关矩阵
         :return:
         """
-        top_order_ls: list[tuple] = list()  # 记录该飞机所有可执行航班的拓扑排序
-        adjacency_table: list[AdjTabItem] = list()
-        node2num_map: dict[tuple[int, timedelta], int] = dict()
+        # 先遍历一遍所有adjust item，并做好map
         node_cnt = 0
-        edge_ls: list[tuple] = list()  # 记录该飞机可执行航班之间的连接
-        edge_cost_ls = list()  # 记录该飞机可执行航班的执行成本，连接的成本为edge后继航班连接前驱航班的成本
-        edge2num_map: dict[tuple[int, int], int] = dict()
+        for v in self.graph_node_list.values():
+            for ai in v.adjust_list.values():
+                self.node2num_map[(v.key, ai.adjust_time)] = node_cnt
+                self.num2node_map[node_cnt] = (v.key, ai.adjust_time)
+                node_cnt += 1
+        self.node_attr_list = [0]*node_cnt
+        self.cancel_ct_list = [0]*node_cnt
+        self.node_cancel_cost = [0]*node_cnt
+        # 再遍历所有边，并做好map
         edge_cnt = 0
-
-        mutex_graph_node_edges = dict()  # 存放一个graph node的所有调整方案的所有后继边
-
-        init_mark = (-aircraft_num, timedelta(minutes=0))
-        queue = [init_mark]
-        node2num_map[init_mark] = node_cnt
-        adjacency_table.append(AdjTabItem(num=node_cnt, info=init_mark))
-        node_cnt += 1
-
-        destination_airport = list()  # 存放终点机场信息
-        while queue:
-            current_node_num, current_adjust_time = None, None
-            current_graph_node, current_adjust_item = None, None
-            for mk in queue:
-                node_num, adjust_time = mk
-                graph_node: GraphNode = graph_node_list_cp[node_num]
-                adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
-                included = 0
-                for pnl in adjust_item.pre:
-                    pnn, pnat, c = pnl
-                    pn: GraphNode = self.graph_node_list[pnn]
-                    pnai: AdjustItem = pn.adjust_list[pnat]
-                    if aircraft_num in pnai.available:
-                        included = 1
-                        break
-                if not included:
-                    current_node_num, current_adjust_time = node_num, adjust_time
-                    current_graph_node, current_adjust_item = graph_node, adjust_item
-                    break
-            current_mark = (current_node_num, current_adjust_time)
-            if current_node_num < -len(self.flight_data.aircraft_list):
-                destination_airport.append(current_mark)
-            top_order_ls.append(current_mark)
-            queue.remove(current_mark)
-            current_num = node2num_map[current_mark]
-            adj_table_item = adjacency_table[current_num]
-
-            # 加入后继
-            for suc_mark in current_adjust_item.suc:
-                suc_node_num, suc_adjust_time = suc_mark
-                if suc_node_num not in graph_node_list_cp.keys():  # 不满足航线飞机约束
-                    continue
-                suc_node: GraphNode = self.graph_node_list[suc_node_num]
-                suc_adjust_item: AdjustItem = suc_node.adjust_list[suc_adjust_time]
-                if aircraft_num not in suc_adjust_item.available:
-                    continue
-                if suc_mark not in node2num_map.keys():
-                    node2num_map[suc_mark] = node_cnt
-                    suc_adj_table_item = AdjTabItem(num=node_cnt, info=suc_mark)
-                    adjacency_table.append(suc_adj_table_item)
-                    node_cnt += 1
-                suc_mark_num = node2num_map[suc_mark]
-                suc_adj_table_item = adjacency_table[suc_mark_num]
-                adj_table_item.suc.append(suc_mark_num)
-                suc_adj_table_item.pre.append(current_num)
-
-                if suc_mark not in queue:
-                    queue.append(suc_mark)
-                edge = (current_num, node2num_map[suc_mark])
-                edge_ls.append(edge)
-                edge2num_map[edge] = edge_cnt
-                if current_node_num in self.flight_data.mutex_flight_node_nums:
-                    if current_node_num not in mutex_graph_node_edges.keys():
-                        mutex_graph_node_edges[current_node_num] = [edge_cnt]
+        for v in self.graph_node_list.values():
+            for ai in v.adjust_list.values():
+                edge_airm = (v.key, ai.adjust_time)
+                edge_airm_num = self.node2num_map[edge_airm]
+                if -aircraft_num <= v.key < 0:
+                    self.node_attr_list[edge_airm_num] = 1
+                elif v.key < -aircraft_num:
+                    self.node_attr_list[edge_airm_num] = -1
+                else:
+                    self.cancel_ct_list[edge_airm_num] = 2
+                    self.node_cancel_cost[edge_airm_num] = self.flight_cancel_cost[v.key]
+                for from_graph_num, from_adjust_time, cost in ai.pre:
+                    edge_from = (from_graph_num, from_adjust_time)
+                    edge_from_num = self.node2num_map[edge_from]
+                    self.edge2num_map[(edge_from_num, edge_airm_num)] = edge_cnt
+                    self.edge_ls[edge_cnt] = (edge_from_num, edge_airm_num)
+                    column = [0] * node_cnt
+                    column[edge_from_num] = 1
+                    column[edge_airm_num] = -1
+                    self.ass_matrix.append(column)
+                    self.edge_cost_list.append(cost)
+                    edge_cnt += 1
+            # 有多个后继的增加互斥约束
+            if len(v.adjust_list) >= 2:
+                for ai in v.adjust_list.values():
+                    edge_airm = (v.key, ai.adjust_time)
+                    edge_airm_num = self.node2num_map[edge_airm]
+                    if v.key in self.mutex_graph_node_edge_list.keys():
+                        self.mutex_graph_node_edge_list[v.key].append(edge_airm_num)
                     else:
-                        mutex_graph_node_edges[current_node_num].append(edge_cnt)
-                edge_cnt += 1
-            # 删除当前复制节点的后继连接边与后继复制节点的前驱连接边
-            while current_adjust_item.suc:
-                suc_mark = current_adjust_item.suc.pop(0)
-                suc_node_num, suc_adjust_time = suc_mark
-                if suc_node_num not in graph_node_list_cp.keys():  # 不满足航线飞机约束
-                    continue
-                suc_node_cp: GraphNode = graph_node_list_cp[suc_node_num]
-                suc_adjust_item_cp: AdjustItem = suc_node_cp.adjust_list[suc_adjust_time]
-                if aircraft_num not in suc_adjust_item_cp.available:
-                    continue
-                cost = 0
-                for pre_info in suc_adjust_item_cp.pre:
-                    pre_info_node_num, pre_info_adjust_time, pre_info_cost = pre_info
-                    if (pre_info_node_num, pre_info_adjust_time) == current_mark:
-                        cost = pre_info_cost
-                        break
-                suc_adjust_item_cp.pre.remove((current_node_num, current_adjust_time, cost))
-                if suc_node_cp.key >= 0 and suc_node_cp.flight_info['cid'] != aircraft_num:  # 换机成本
-                    cost += change_aircraft_para(suc_node_cp.flight_info['dpt'])
-                edge_cost_ls.append(cost)
-        # 为每一架飞机增加一个虚拟的沉落节点，保证一架飞机只有一个起点和一个终点
-        sink_node = AdjTabItem(num=node_cnt, info=tuple())
-        adjacency_table.append(sink_node)
-        for da in destination_airport:
-            da_num = node2num_map[da]
-            da_adj_table_item = adjacency_table[da_num]
-            da_adj_table_item.suc.append(node_cnt)
-            sink_node.pre.append(da_num)
-            virtual_edge = (da_num, node_cnt)
-            edge_ls.append(virtual_edge)
-            edge_cost_ls.append(0)
-            edge2num_map[virtual_edge] = edge_cnt
-            edge_cnt += 1
+                        self.mutex_graph_node_edge_list[v.key] = [edge_airm_num]
+        self.ass_matrix = list_reverse(self.ass_matrix)
 
-        self.top_order[aircraft_num] = top_order_ls
-        self.edge_cost_list[aircraft_num] = edge_cost_ls
+    def run(self):
+        self.generate_association_matrix(self.flight_data.aircraft_volume)
+        mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list, self.node_cancel_cost)
+        # mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
+        mfp_solver.print_info()
+        mfp_solver.solve()
+        print("Zhang Chor is a good name!")
+        self.optimal = mfp_solver.optimal
+        self.solution_x = mfp_solver.solution_x
+        self.solution_y = mfp_solver.solution_y
+        if self.is_solution_int:
+            print(mfp_solver.optimal)
+            print(mfp_solver.solution_x)
+            print(mfp_solver.solution_y)
+            self.print_solution()
+        else:
+            print("NOT INT SOLUTION")
 
-        self.adjacency_table_list[aircraft_num] = adjacency_table
-        self.node2num_map_list[aircraft_num] = node2num_map
-        self.edge_ls_list[aircraft_num] = edge_ls
-        self.edge2num_map_list[aircraft_num] = edge2num_map
+    @property
+    def is_solution_int(self) -> bool:
+        for i in self.solution_x:
+            if i != int(i):
+                return False
+        return True
 
-        self.mutex_graph_node_edge_list[aircraft_num] = mutex_graph_node_edges
+    def print_solution(self):
+        self.all_edge_string = list()
+        for i in range(len(self.solution_x)):
+            if self.solution_x[i]:
+                self.all_edge_string.append(self.edge_ls[i])
+        for edge_from, edge_airm in self.all_edge_string:
+            if edge_from >= 0:
+                self.graph_node_string.add(self.num2node_map[edge_from])
+            if edge_airm >= 0:
+                self.graph_node_string.add(self.num2node_map[edge_airm])
+        print(*self.graph_node_string)
+
+
+
