@@ -444,7 +444,8 @@ class ColumnGeneration(object):
                 self.aircraft_dual = mp_solver.aircraft_dual
                 self.slot_dual = mp_solver.slot_dual
                 self.airfield_stoppage_dual = mp_solver.parking_dual
-            if not self.optimal_value_list or self.optimal_value_list[-1] - mp_solver.optimal > 0.1:
+            # 当最优值发生变化，或即将退出循环时，记录详细的解的信息
+            if not self.optimal_value_list or self.optimal_value_list[-1] - mp_solver.optimal > 0.1 or quit_loop:
                 time_mark = current_time()
                 solution_info = SolutionInfo(self.graph_node_list, self.graph_node_strings, self.aircraft_route_nums,
                                              cost=mp_solver.optimal, iter_num=self.iter_num,
@@ -456,7 +457,7 @@ class ColumnGeneration(object):
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1
             print('最优值:', mp_solver.optimal)
-            print('取消航班数:', sum(self.solution_y))
+            print('取消Graph Node:', sum(self.solution_y))
             self.iter_summary(start_time)
             if quit_loop:
                 break

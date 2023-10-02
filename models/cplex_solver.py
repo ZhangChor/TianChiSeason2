@@ -172,8 +172,8 @@ class MultiFlowModel(object):
         self._var_x_name_list = [f'e{j}' for j in range(self.edge_num)]
         self._var_y_name_list = [f'n{i}' for i in range(self.cancel_num)]
         self.mfp = Model(name="multi flow model problem")
-        self.var_x_list = self.mfp.continuous_var_list(self._var_x_name_list, name='x')
-        self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y')
+        self.var_x_list = self.mfp.binary_var_list(self._var_x_name_list, name='x')
+        self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y', ub=1)
         # 流平衡约束
         for i in range(self.node_num):
             row = ass_matrix[i]
@@ -181,12 +181,12 @@ class MultiFlowModel(object):
                 self.mfp.sum(row[j] * self.var_x_list[j] for j in range(self.edge_num)) == flow_ct[i],
                 ctname=f'node{i}')
         # 取消成本
-        # for i in range(self.cancel_num):
-        #     row = ass_matrix[i]
-        #     ads_row = list(map(lambda x: abs(x), row))
-        #     if (not list_ge(row, [0]*self.edge_num)) and (not list_le(row, [0]*self.edge_num)):
-        #         self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] for j in range(self.edge_num)) +
-        #                                 self.var_y_list[i] * 2 == 2, ctname=f'cancel_node{i}')
+        for i in range(self.cancel_num):
+            row = ass_matrix[i]
+            ads_row = list(map(lambda x: abs(x), row))
+            if (not list_ge(row, [0]*self.edge_num)) and (not list_le(row, [0]*self.edge_num)):
+                self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] for j in range(self.edge_num)) +
+                                        self.var_y_list[i] * 2 == 2, ctname=f'cancel_node{i}')
         self.mfp.minimize(self.mfp.sum(edge_cost[j] * self.var_x_list[j] for j in range(self.edge_num)) +
                           self.mfp.sum(cancel_cost[j] * self.var_y_list[j] for j in range(len(cancel_cost))))
         self.result = None

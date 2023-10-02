@@ -18,6 +18,7 @@ class MultiFlowProblem(object):
         self.airport_parking_scene = AirportParkingScene()
         self.airport_parking_map = dict()
         self.airport_parking_capacity = list()
+        self.airport_parking_edges = dict()
         self.adjacency_tabl = dict()  # 储存邻接表
         self.node2num_map = dict()  # 储存可执行航班到在邻接矩阵中的行的指标
         self.num2node_map = dict()
@@ -38,7 +39,9 @@ class MultiFlowProblem(object):
         self.solution_y = list()
         self.all_edge_string = list()
         self.graph_node_string = set()
-        self.fids_string = list()
+        self.graph_node_route = list()
+        self.solution_route = dict()
+        self.fids_string = dict()
 
         flight_cancel_cost = []
         for node_num, graph_node in self.flight_data.graph_node_list.items():
@@ -57,6 +60,7 @@ class MultiFlowProblem(object):
             self.airport_parking_map[airport_num] = airfield_stoppage_num
             self.airport_parking_capacity.append(capacity)
             airfield_stoppage_num += 1
+        self.airport_parking_edges = {airport_num: list() for airport_num in self.airport_parking_map.keys()}
 
     def generate_dep_arr_slot_matrix(self):
         # 遍历SoltScene，寻找落入数量大于容量的slot，进行编号
@@ -105,7 +109,10 @@ class MultiFlowProblem(object):
                 if -aircraft_num <= v.key < 0:
                     self.node_attr_list[edge_airm_num] = 1
                 elif v.key < -aircraft_num:
-                    self.node_attr_list[edge_airm_num] = -1
+                    airm_airport_graph_node = self.graph_node_list[v.key]
+                    airm_airport = airm_airport_graph_node.flight_info['ap']
+                    aircraft_ct = sum(self.flight_data.airport_list[airm_airport].terminal_ctp)
+                    self.node_attr_list[edge_airm_num] = -aircraft_ct
                 else:
                     self.cancel_ct_list[edge_airm_num] = 2
                     self.node_cancel_cost[edge_airm_num] = self.flight_cancel_cost[v.key]
@@ -121,30 +128,33 @@ class MultiFlowProblem(object):
                     self.edge_cost_list.append(cost)
                     edge_cnt += 1
             # 有多个后继的增加互斥约束
+        for v in self.graph_node_list.values():
             if len(v.adjust_list) >= 2:
                 for ai in v.adjust_list.values():
-                    edge_airm = (v.key, ai.adjust_time)
-                    edge_airm_num = self.node2num_map[edge_airm]
-                    if v.key in self.mutex_graph_node_edge_list.keys():
-                        self.mutex_graph_node_edge_list[v.key].append(edge_airm_num)
-                    else:
-                        self.mutex_graph_node_edge_list[v.key] = [edge_airm_num]
+                    node_from = (v.key, ai.adjust_time)
+                    node_from_num = self.node2num_map[node_from]
+                    for node_airm in ai.suc:
+                        node_airm_num = self.node2num_map[node_airm]
+                        edge = (node_from_num, node_airm_num)
+                        edge_num = self.edge2num_map[edge]
+                        if v.key in self.mutex_graph_node_edge_list.keys():
+                            self.mutex_graph_node_edge_list[v.key].append(edge_num)
+                        else:
+                            self.mutex_graph_node_edge_list[v.key] = [edge_num]
         self.ass_matrix = list_reverse(self.ass_matrix)
 
     def run(self):
         self.generate_association_matrix(self.flight_data.aircraft_volume)
         mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list, self.node_cancel_cost)
-        # mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
-        mfp_solver.print_info()
+        mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
+        # mfp_solver.print_info()
         mfp_solver.solve()
-        print("Zhang Chor is a good name!")
         self.optimal = mfp_solver.optimal
         self.solution_x = mfp_solver.solution_x
         self.solution_y = mfp_solver.solution_y
         if self.is_solution_int:
-            print(mfp_solver.optimal)
-            print(mfp_solver.solution_x)
-            print(mfp_solver.solution_y)
+            # 开始修正解
+            print(self.optimal)
             self.print_solution()
         else:
             print("NOT INT SOLUTION")
@@ -166,7 +176,40 @@ class MultiFlowProblem(object):
                 self.graph_node_string.add(self.num2node_map[edge_from])
             if edge_airm >= 0:
                 self.graph_node_string.add(self.num2node_map[edge_airm])
-        print(*self.graph_node_string)
+        # 融合路径
+        string_set = list()
+        for i in range(len(self.all_edge_string)):
+            from_node, airm_node = self.all_edge_string[i]
+            merge, attach = -1, -1
+            for j in range(len(string_set)):
+                exist_string = string_set[j]
+                if airm_node == exist_string[0]:
+                    merge = j
+                    exist_string.insert(0, from_node)
+                if from_node == exist_string[-1]:
+                    attach = j
+                    exist_string.append(airm_node)
+            if merge >= 0 and attach >= 0:
+                front_string = string_set[attach]
+                back_string = string_set[merge]
+                front_string.pop(-1)
+                back_string.pop(0)
+                new_string_set = [[*front_string, *back_string]]
+                for j in range(len(string_set)):
+                    if j != merge and j != attach:
+                        new_string_set.append(string_set[j])
+                string_set = new_string_set
+            elif merge < 0 and attach < 0:
+                string_set.append([from_node, airm_node])
+        self.graph_node_route = string_set
+        for node_route_nums in self.graph_node_route:
+            first_node_num = node_route_nums[0]
+            first_graph_node_num, first_adjust_time = self.num2node_map[first_node_num]
+            graph_node_string = [self.num2node_map[nn] for nn in node_route_nums]
+            self.solution_route[-first_graph_node_num] = graph_node_string
+
+
+
 
 
 
