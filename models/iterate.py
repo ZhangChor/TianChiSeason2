@@ -63,6 +63,7 @@ class ColumnGeneration(object):
         self.aircraft_route_nums = [0] * len(self.flight_data.aircraft_list)  # 记录每架飞机现有路径个数
         self.solution_x = None
         self.solution_y = None
+        self.solution_route = dict()
         self.optimal_value_list = list()
         self.iter_num = 0
         self._add_route_reduce_cost = list()
@@ -373,7 +374,7 @@ class ColumnGeneration(object):
         self.aircraft_route_nums[aircraft_index] += 1
         self._add_route_reduce_cost.append(route_reduce_cost)
         print(f'为飞机ID={aircraft_num}新增一条路径, RC={route_reduce_cost}')
-        self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
+        # self.print_route_info(aircraft_num, self.aircraft_route_nums[aircraft_index] - 1)
 
     def print_route_info(self, aircraft_num: int, route_num=0):
         aircraft_index = aircraft_num - 1
@@ -463,6 +464,13 @@ class ColumnGeneration(object):
                 break
         # 添加结束标志
         self.iter_summary(start_time, stop=True)
+        cid = 1
+        for i in range(len(self.solution_x)):
+            if self.solution_x[i] == 1:
+                self.solution_route[cid] = self.graph_node_strings[i]
+                cid += 1
+
+
 
     def solve_sub_problem(self, aircraft_num: int):
         edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
@@ -512,19 +520,4 @@ class ColumnGeneration(object):
             if i != int(i):
                 return False
         return True
-
-    def run_mf(self):
-        """
-        对比实验，使用多商品流模型
-        :return:
-        """
-        # 对每架飞机进行预遍历，拓扑排序，产生邻接矩阵
-        self.generate_dep_arr_slot_matrix()
-        for aircraft_num in self.flight_data.aircraft_list.keys():
-            graph_node_list_cp = self.pre_traversal(aircraft_num)
-            self.topological_ordering(aircraft_num, graph_node_list_cp)
-            self.generate_association_matrix(aircraft_num)
-
-        start_time = current_time()
-        pass
 

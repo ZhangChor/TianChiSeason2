@@ -1,8 +1,9 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from models.graph import Graph
 from models.handing import FlightData
 from models.utils import AirportParkingScene, AirfieldStoppages
 from models.utils import GraphNode, AirportSlot, SlotItem, AdjTabItem, AdjustItem
+from models.utils import dot_sum
 from models.cplex_solver import MultiFlowModel
 
 
@@ -39,7 +40,7 @@ class MultiFlowProblem(object):
         self.solution_y = list()
         self.all_edge_string = list()
         self.graph_node_string = set()
-        self.graph_node_route = list()
+        self.edge_route = list()
         self.solution_route = dict()
         self.fids_string = dict()
 
@@ -127,12 +128,14 @@ class MultiFlowProblem(object):
                     self.ass_matrix.append(column)
                     self.edge_cost_list.append(cost)
                     edge_cnt += 1
-            # 有多个后继的增加互斥约束
+        # 有多个后继的增加互斥约束
         for v in self.graph_node_list.values():
+            v: GraphNode
             if len(v.adjust_list) >= 2:
                 for ai in v.adjust_list.values():
                     node_from = (v.key, ai.adjust_time)
                     node_from_num = self.node2num_map[node_from]
+                    in_parking_scene = v.flight_info['ap'] in self.airport_parking_map.keys()
                     for node_airm in ai.suc:
                         node_airm_num = self.node2num_map[node_airm]
                         edge = (node_from_num, node_airm_num)
@@ -141,6 +144,13 @@ class MultiFlowProblem(object):
                             self.mutex_graph_node_edge_list[v.key].append(edge_num)
                         else:
                             self.mutex_graph_node_edge_list[v.key] = [edge_num]
+                        # 判断是否停在了停机受限机场
+                        suc_node_num, suc_adjust_time = node_airm
+                        suc_dpt = self.graph_node_list[suc_node_num].adjust_list[suc_adjust_time].departure_time
+                        if in_parking_scene:
+                            parking_scene: AirfieldStoppages = self.airport_parking_scene[v.flight_info['ap']]
+                            if v.flight_info['avt'] <= parking_scene.start_time and parking_scene.end_time <= suc_dpt:
+                                self.airport_parking_edges[v.flight_info['ap']].append(edge_num)
         self.ass_matrix = list_reverse(self.ass_matrix)
 
     def run(self):
@@ -201,12 +211,34 @@ class MultiFlowProblem(object):
                 string_set = new_string_set
             elif merge < 0 and attach < 0:
                 string_set.append([from_node, airm_node])
-        self.graph_node_route = string_set
-        for node_route_nums in self.graph_node_route:
+        self.edge_route = string_set
+
+        for node_route_nums in self.edge_route:
             first_node_num = node_route_nums[0]
             first_graph_node_num, first_adjust_time = self.num2node_map[first_node_num]
             graph_node_string = [self.num2node_map[nn] for nn in node_route_nums]
             self.solution_route[-first_graph_node_num] = graph_node_string
+        # 计算成本
+        change_cost, execution_cost, cancel_cost = 0, 0, 0
+        cancel_graph_node = [1]*len(self.flight_cancel_cost)
+        for cid, graph_node_string in self.solution_route.items():
+            for graph_node_num, adjust_time in graph_node_string:
+                graph_node = self.graph_node_list[graph_node_num]
+                if graph_node_num >= 0:
+                    cancel_graph_node[graph_node_num] = 0
+                    if graph_node.flight_info["cid"] != cid:
+                        if graph_node.adjust_list[adjust_time].departure_time <= datetime(2017, 5, 6, 16):
+                            change_cost += 15
+                        else:
+                            change_cost += 5
+        cancel_cost += dot_sum(cancel_graph_node, self.flight_cancel_cost)
+        execution_cost += dot_sum(self.solution_x, self.edge_cost_list)
+        print(f"执行成本：{execution_cost}")
+        print(f"换机成本：{change_cost}")
+        print(f"取消成本：{cancel_cost}")
+        print(f"总成本：{change_cost+cancel_cost+execution_cost}")
+
+
 
 
 
