@@ -154,6 +154,8 @@ class MultiFlowProblem(object):
         self.ass_matrix = list_reverse(self.ass_matrix)
 
     def run(self):
+        from time import time as current_time
+        t0 = current_time()
         self.generate_association_matrix(self.flight_data.aircraft_volume)
         mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list, self.node_cancel_cost)
         mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
@@ -162,12 +164,8 @@ class MultiFlowProblem(object):
         self.optimal = mfp_solver.optimal
         self.solution_x = mfp_solver.solution_x
         self.solution_y = mfp_solver.solution_y
-        if self.is_solution_int:
-            # 开始修正解
-            print(self.optimal)
-            self.print_solution()
-        else:
-            print("NOT INT SOLUTION")
+        t1 = current_time()
+        self.print_solution(self.is_solution_int, t1-t0)
 
     @property
     def is_solution_int(self) -> bool:
@@ -176,7 +174,12 @@ class MultiFlowProblem(object):
                 return False
         return True
 
-    def print_solution(self):
+    def print_solution(self, is_int: bool, running_time: float):
+        file_name = self.flight_data.workspace_path + r"/solution"
+        file_name += "/cid" + str(self.flight_data.aircraft_volume) + "result.txt"
+        if not is_int:
+            with open(file_name, 'w') as txtfile:
+                txtfile.write(f"SOLUTION IS NOT INTEGER." + '\n')
         self.all_edge_string = list()
         for i in range(len(self.solution_x)):
             if self.solution_x[i]:
@@ -233,10 +236,15 @@ class MultiFlowProblem(object):
                             change_cost += 5
         cancel_cost += dot_sum(cancel_graph_node, self.flight_cancel_cost)
         execution_cost += dot_sum(self.solution_x, self.edge_cost_list)
-        print(f"执行成本：{execution_cost}")
-        print(f"换机成本：{change_cost}")
-        print(f"取消成本：{cancel_cost}")
-        print(f"总成本：{change_cost+cancel_cost+execution_cost}")
+
+        with open(file_name, 'a') as txtfile:
+            if txtfile.tell() == 0:
+                txtfile.write(f"Aircraft volume={self.flight_data.aircraft_volume}" + '\n')
+                txtfile.write(f"执行成本：{execution_cost}" + '\n')
+                txtfile.write(f"换机成本：{change_cost}" + '\n')
+                txtfile.write(f"取消成本：{cancel_cost}" + '\n')
+                txtfile.write(f"总成本：{change_cost+cancel_cost+execution_cost}" + '\n')
+                txtfile.write(f"运行时间：{timedelta(seconds=running_time)}" + '\n')
 
 
 

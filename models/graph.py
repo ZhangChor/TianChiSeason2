@@ -296,7 +296,7 @@ class Graph(object):
                           max_delay_time: timedelta, alter_node_num: int, current_node_num: int,
                           current_adjust_item: AdjustItem, endorsement_num: int):
         # 将最大延误时间设定的越高，图越大，运算时间越长，但解的效果不一定明显提升，这里设置为6小时，避免图无限的增大
-        max_delay_time = timedelta(hours=6)
+        max_delay_time = timedelta(hours=4)
         alter_node: GraphNode = self.graph_node_list[alter_node_num]
         alter_flight_info = alter_node.flight_info
         current_node: GraphNode = self.graph_node_list[current_node_num]

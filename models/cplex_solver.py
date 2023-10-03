@@ -172,7 +172,7 @@ class MultiFlowModel(object):
         self._var_x_name_list = [f'e{j}' for j in range(self.edge_num)]
         self._var_y_name_list = [f'n{i}' for i in range(self.cancel_num)]
         self.mfp = Model(name="multi flow model problem")
-        self.var_x_list = self.mfp.binary_var_list(self._var_x_name_list, name='x')
+        self.var_x_list = self.mfp.continuous_var_list(self._var_x_name_list, name='x')
         self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y', ub=1)
         # 流平衡约束
         for i in range(self.node_num):
