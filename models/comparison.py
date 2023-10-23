@@ -1,9 +1,10 @@
+import csv
 from datetime import timedelta, datetime
 from models.graph import Graph
 from models.handing import FlightData
 from models.utils import AirportParkingScene, AirfieldStoppages
-from models.utils import GraphNode, AirportSlot, SlotItem, AdjTabItem, AdjustItem
-from models.utils import dot_sum
+from models.utils import GraphNode, AirportSlot, SlotItem, AdjustItem, OutPutInfo
+from models.utils import dot_sum, timedelta_minutes
 from models.cplex_solver import MultiFlowModel
 
 
@@ -43,6 +44,7 @@ class MultiFlowProblem(object):
         self.edge_route = list()
         self.solution_route = dict()
         self.fids_string = dict()
+        self.output = OutPutInfo()
 
         flight_cancel_cost = []
         for node_num, graph_node in self.flight_data.graph_node_list.items():
@@ -153,33 +155,49 @@ class MultiFlowProblem(object):
                                 self.airport_parking_edges[v.flight_info['ap']].append(edge_num)
         self.ass_matrix = list_reverse(self.ass_matrix)
 
-    def run(self):
+    def run(self, relation=True):
         from time import time as current_time
-        t0 = current_time()
+        t10 = current_time()
         self.generate_association_matrix(self.flight_data.aircraft_volume)
-        mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list, self.node_cancel_cost)
+        mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list, self.node_cancel_cost,
+                                    relation=relation)
         mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
         # mfp_solver.print_info()
+        t11 = current_time()
+        print("构造问题时间：", t11-t10)
         mfp_solver.solve()
         self.optimal = mfp_solver.optimal
         self.solution_x = mfp_solver.solution_x
         self.solution_y = mfp_solver.solution_y
-        t1 = current_time()
-        self.print_solution(self.is_solution_int, t1-t0)
+        t12 = current_time()
+        self.print_solution(t12-t11)
+        if not self.is_solution_int:
+            print("SOLUTION IS NOT INTEGER.")
+            # mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list,
+            #                             self.node_cancel_cost, relation=False)
+            # mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
+            # mfp_solver.add_fix_int_var(self.solution_x)
+            # mfp_solver.solve()
+            # self.optimal = mfp_solver.optimal
+            # self.solution_x = mfp_solver.solution_x
+            # self.solution_y = mfp_solver.solution_y
+            # t2 = current_time()
+            # self.print_solution(t2 - t1, mode='a')
+            pass
+        else:
+            print("SOLVE DONE.")
 
     @property
     def is_solution_int(self) -> bool:
         for i in self.solution_x:
             if i != int(i):
                 return False
+        for i in self.solution_y:
+            if i not in (0, 2):
+                return False
         return True
 
-    def print_solution(self, is_int: bool, running_time: float):
-        file_name = self.flight_data.workspace_path + r"/solution"
-        file_name += "/cid" + str(self.flight_data.aircraft_volume) + "result.txt"
-        if not is_int:
-            with open(file_name, 'w') as txtfile:
-                txtfile.write(f"SOLUTION IS NOT INTEGER." + '\n')
+    def print_solution(self, running_time: float, mode='w'):
         self.all_edge_string = list()
         for i in range(len(self.solution_x)):
             if self.solution_x[i]:
@@ -221,35 +239,97 @@ class MultiFlowProblem(object):
             first_graph_node_num, first_adjust_time = self.num2node_map[first_node_num]
             graph_node_string = [self.num2node_map[nn] for nn in node_route_nums]
             self.solution_route[-first_graph_node_num] = graph_node_string
-        # 计算成本
+        # 计算成本，统计解的信息
         change_cost, execution_cost, cancel_cost = 0, 0, 0
+        effect_flight = 0
         cancel_graph_node = [1]*len(self.flight_cancel_cost)
+        zero_time = timedelta(minutes=0)
+        pas_15_time = timedelta(minutes=15)
+        pas_30_time = timedelta(minutes=30)
+        net_15_time = zero_time - pas_15_time
+        net_30_time = zero_time - pas_30_time
         for cid, graph_node_string in self.solution_route.items():
+            tp = self.graph_node_list[-cid].flight_info["tp"]
             for graph_node_num, adjust_time in graph_node_string:
                 graph_node = self.graph_node_list[graph_node_num]
+                flight_info = graph_node.flight_info
+                adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
                 if graph_node_num >= 0:
                     cancel_graph_node[graph_node_num] = 0
-                    if graph_node.flight_info["cid"] != cid:
-                        if graph_node.adjust_list[adjust_time].departure_time <= datetime(2017, 5, 6, 16):
-                            change_cost += 15
-                        else:
-                            change_cost += 5
+
+                    self.output.performed_flights += len(flight_info["fids"])
+                    if flight_info["tmk"]:
+                        effect_flight += len(flight_info["fids"])
+                    if adjust_time > zero_time:
+                        self.output.del_flights += 1
+                        delay_minutes = timedelta_minutes(adjust_time)
+                        self.output.total_del_minutes += delay_minutes
+                        self.output.passenger_delay_nums += flight_info["pn"]
+                        self.output.passenger_delay_minutes += flight_info["pn"] * delay_minutes
+                        self.output.seat_remains += flight_info["sn"] - flight_info["pn"]
+                        if adjust_time > pas_15_time:
+                            self.output.del_15m_flights += 1
+                            if adjust_time > pas_30_time:
+                                self.output.del_30m_flights += 1
+                    if adjust_time < zero_time:
+                        self.output.adv_flights += 1
+                        self.output.total_adv_minutes -= timedelta_minutes(adjust_time)
+                        if adjust_time < net_15_time:
+                            self.output.adv_15m_flights += 1
+                            if adjust_time < net_30_time:
+                                self.output.adv_30m_flights += 1
+                    if flight_info["tp"] != tp:
+                        self.output.aircraft_type_conversion += 1
+                    if flight_info["attr"] == "straighten":
+                        self.output.straighten_flights += 1
+                    if flight_info["attr"] == "through":
+                        self.output.passenger_cancellation += flight_info["tpn"]
+                    if flight_info["cid"] != cid:
+                        self.output.swap_flights += 1
+                    if adjust_item.departure_time.day > flight_info["dpt"].day:
+                        self.output.make_up_flights += 1
+
+                    # if graph_node.flight_info["cid"] != cid:
+                    #     if graph_node.adjust_list[adjust_time].departure_time <= datetime(2017, 5, 6, 16):
+                    #         change_cost += 15
+                    #     else:
+                    #         change_cost += 5
         cancel_cost += dot_sum(cancel_graph_node, self.flight_cancel_cost)
         execution_cost += dot_sum(self.solution_x, self.edge_cost_list)
 
-        with open(file_name, 'a') as txtfile:
-            if txtfile.tell() == 0:
-                txtfile.write(f"Aircraft volume={self.flight_data.aircraft_volume}" + '\n')
-                txtfile.write(f"执行成本：{execution_cost}" + '\n')
-                txtfile.write(f"换机成本：{change_cost}" + '\n')
-                txtfile.write(f"取消成本：{cancel_cost}" + '\n')
-                txtfile.write(f"总成本：{change_cost+cancel_cost+execution_cost}" + '\n')
-                txtfile.write(f"运行时间：{timedelta(seconds=running_time)}" + '\n')
+        for i in range(len(cancel_graph_node)):
+            if cancel_graph_node[i] == 1:
+                graph_node: GraphNode = self.graph_node_list[i]
+                flight_info = graph_node.flight_info
+                self.output.flight_cancellation += len(flight_info["fids"])
+                self.output.passenger_cancellation += flight_info["pn"]
+                self.output.seat_remains += flight_info["sn"]
+        self.output.error_rate = (self.output.del_15m_flights + self.output.adv_15m_flights) / self.output.performed_flights if self.output.performed_flights else 0
+        self.output.avg_del_minutes = self.output.total_del_minutes / self.output.del_flights if self.output.del_flights else 0
+        self.output.avg_adv_minutes = self.output.total_adv_minutes / self.output.adv_flights if self.output.adv_flights else 0
 
+        total_cost = cancel_cost + execution_cost
+        print(f"执行成本：{execution_cost}")
+        print(f"受影响航班：{effect_flight}")
+        print(f"取消成本：{cancel_cost}")
+        print(f"总成本：{total_cost}")
+        print(f"求解时间：{timedelta(seconds=running_time)}")
+        file_name = self.flight_data.workspace_path + r"/solution"
+        result_file_name = file_name + "/cid" + str(self.flight_data.aircraft_volume) + "result.txt"
+        with open(result_file_name, mode) as txtfile:
+            txtfile.write(f"Aircraft volume={self.flight_data.aircraft_volume}" + '\n')
+            txtfile.write(f"执行成本：{execution_cost}" + '\n')
+            txtfile.write(f"受影响航班：{effect_flight}" + '\n')
+            txtfile.write(f"取消成本：{cancel_cost}" + '\n')
+            txtfile.write(f"总成本：{total_cost}" + '\n')
+            txtfile.write(f"求解时间：{timedelta(seconds=running_time)}" + '\n')
 
-
-
-
-
-
-
+        route_info_file_name = file_name + "/cid" + str(self.flight_data.aircraft_volume) + "route_info.csv"
+        self.output.scores = cancel_cost + execution_cost
+        self.output.running_time = running_time
+        route_info = self.output.data_picked()
+        header_field_name = route_info.keys()  # 使用字典的keys作为列名
+        with open(route_info_file_name, mode='w', newline='') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=header_field_name)
+            writer.writeheader()
+            writer.writerow(route_info)

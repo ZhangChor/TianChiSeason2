@@ -76,6 +76,7 @@ class Graph(object):
         while self.queue:
             self.queue.sort()
             current_mark = self.queue.pop(0)
+            # print("OUT", current_mark)
             dpt, current_node_num, current_adjust_time = current_mark
             current_node: GraphNode = node_list[current_node_num]
             current_flight_info: dict = current_node.flight_info
@@ -181,6 +182,7 @@ class Graph(object):
         if afa.adjust_time > zero_time:  # 延误
             adjust_cost = afa.adjust_time.seconds / 3600 * 100
             passenger_cost = passenger_delay_para(afa.adjust_time) * alter_flight_info['pn']
+            # TODO 签转旅客可以更少
             endorsement_cost = passenger_endorse_delay_para(afa.adjust_time) * endorsement_num
         else:  # 提前
             adjust_cost = -timedelta_minutes(afa.adjust_time) / 60 * 150
@@ -295,8 +297,8 @@ class Graph(object):
     def _calcul_min_delay(self, current_time: datetime, alter_flight_dpt: datetime, turn_time: timedelta,
                           max_delay_time: timedelta, alter_node_num: int, current_node_num: int,
                           current_adjust_item: AdjustItem, endorsement_num: int):
-        # 将最大延误时间设定的越高，图越大，运算时间越长，但解的效果不一定明显提升，这里设置为6小时，避免图无限的增大
-        max_delay_time = timedelta(hours=4)
+        # 将最大延误时间设定的越高，图越大，运算时间越长，但解的效果不一定明显提升
+        max_delay_time = timedelta(hours=12)
         alter_node: GraphNode = self.graph_node_list[alter_node_num]
         alter_flight_info = alter_node.flight_info
         current_node: GraphNode = self.graph_node_list[current_node_num]
@@ -309,6 +311,13 @@ class Graph(object):
             delay_time = current_time - alter_flight_dpt + turn_time
         else:  # 无法连接
             return
+        if alter_flight_dpt + turn_time + delay_time > self.flight_data.duration_end:
+            return
+        # 延误时间离散化
+        max_split = 1
+        if delay_time > timedelta(minutes=60):
+            delay_hours = delay_time.days * 24 + timedelta_minutes(delay_time)/60
+            delay_time = timedelta(hours=(delay_hours//max_split + 1) * max_split)
 
         alter_adjust_list = alter_node.adjust_list
         if delay_time in alter_adjust_list.keys():

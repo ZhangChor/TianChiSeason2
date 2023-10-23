@@ -32,7 +32,7 @@ class FlightData(object):
 
         self.aircraft_volume = 0
         self.schedule = None
-        self._airport_ls = None
+        self.airport_ls = None
         self.aircraft_type_ls = None
         self.departure_airport_ls = None
         self.arrival_airport_ls = None
@@ -114,10 +114,10 @@ class FlightData(object):
         self.arrival_airport_ls = set(list(self.schedule['降落机场']))
         self._aircraft_num = len(set(list(self.schedule['飞机ID'])))
         aircraft_num = -self._aircraft_num - 1
-        self._airport_ls = self.departure_airport_ls | self.arrival_airport_ls
+        self.airport_ls = self.departure_airport_ls | self.arrival_airport_ls
         zero_time = timedelta(minutes=0)
 
-        for ap in self._airport_ls:
+        for ap in self.airport_ls:
             self.airport_list[ap] = Airport(ap, self.aircraft_type_ls)
 
         normal_flight = []
@@ -261,6 +261,7 @@ class FlightData(object):
                     self.airport_list[flight_info['dp']].departure_flight_list.append(self.graph_node_cnt)
                     self.airport_list[flight_info['ap']].arrival_flight_list.append(self.graph_node_cnt)
                     self.graph_node_cnt += 1
+        print("包含机场个数", len(self.airport_ls))
         print('拉直航班个数', len(strengthen_flight))
         print(strengthen_flight)
         print('联程航班个数', len(through_flight))

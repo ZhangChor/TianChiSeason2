@@ -13,7 +13,6 @@ from models.utils import SolutionInfo, DataSaver
 from models.cplex_solver import ShortestPath, MasterProblemSolver
 
 
-
 def deep_copy(data):
     return loads(dumps(data))  # 代替copy.deepcopy
 
@@ -453,7 +452,7 @@ class ColumnGeneration(object):
                                              running_time=time_mark - start_time)
                 solution_info.statistical_path_info(self.solution_x)
                 solution_info.statistical_cancel_info(self.solution_y)
-                data_saver.write_csv(solution_info.data_picked())
+                data_saver.write_csv(solution_info.output.data_picked())
             self.optimal_value_list.append(mp_solver.optimal)
             print(f'------Iter Num {self.iter_num}------')
             self.iter_num += 1

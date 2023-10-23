@@ -1,7 +1,6 @@
 #!/home/zc/miniconda3/envs/cplex_acd/bin/python
 import sys
 
-sys.path.append(r'/home/zc/TianChiSeason2')
 from datetime import datetime, timedelta
 from time import time as current_time
 
@@ -10,6 +9,7 @@ from models.graph import Graph
 from models.iterate import ColumnGeneration
 from models.comparison import MultiFlowProblem
 
+sys.path.append(r'/home/zc/TianChiSeason2')
 
 if __name__ == '__main__':
     workspace_path = r"D:/workspace/TianChiSeason2"
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity, workspace_path)
-    AIRCRAFT_NUM = 3
+    AIRCRAFT_NUM = 5
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # mega_graph.build_graph()
     # mega_graph.save_graph_node_list()
     t1 = current_time()
-    print('构造时间', t1 - t0)
+    print('构造图时间', t1 - t0)
     cg = ColumnGeneration(mega_graph)
     airport_parking_constraint_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
                                        (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
@@ -65,11 +65,10 @@ if __name__ == '__main__':
     cg.add_airport_parking(airport_parking_constraint_list)
     # cg.run(parallel=True)
     t2 = current_time()
+    # print(f"列生成运行时间：{t2 - t1}")
     # 对比实验，多商品流模型
     mfm = MultiFlowProblem(mega_graph)
     # mfm.add_airport_parking(airport_parking_constraint_list)
-    mfm.run()
+    mfm.run(relation=True)
     t3 = current_time()
-    print(f"运行时间：{t3-t2}")
-
-
+    print(f"商品流运行时间：{t3 - t2}")

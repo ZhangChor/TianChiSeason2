@@ -1,7 +1,3 @@
-#!/home/zc/miniconda3/envs/cplex_acd/bin/python
-import sys
-
-sys.path.append(r'/home/zc/PathModel3')
 from docplex.mp.model import Model
 
 
@@ -165,30 +161,42 @@ class ShortestPath(object):
 
 
 class MultiFlowModel(object):
-    def __init__(self, ass_matrix: list[list], flow_ct: list, edge_cost: list, cancel_cost: list):
+    def __init__(self, ass_matrix: list[list], flow_ct: list, edge_cost: list, cancel_cost: list, relation=True):
         self.node_num = len(flow_ct)  # number of node
         self.edge_num = len(edge_cost)  # number of edge
         self.cancel_num = len(cancel_cost)
         self._var_x_name_list = [f'e{j}' for j in range(self.edge_num)]
         self._var_y_name_list = [f'n{i}' for i in range(self.cancel_num)]
         self.mfp = Model(name="multi flow model problem")
-        self.var_x_list = self.mfp.continuous_var_list(self._var_x_name_list, name='x')
-        self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y', ub=1)
+        if relation:
+            self.var_x_list = self.mfp.continuous_var_list(self._var_x_name_list, name='x', ub=1)
+            self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y', ub=2)
+        else:
+            self.var_x_list = self.mfp.binary_var_list(self._var_x_name_list, name='x')
+            self.var_y_list = self.mfp.integer_var_list(self._var_y_name_list, name='y', ub=2)
         # 流平衡约束
         for i in range(self.node_num):
             row = ass_matrix[i]
             self.mfp.add_constraint(
-                self.mfp.sum(row[j] * self.var_x_list[j] for j in range(self.edge_num)) == flow_ct[i],
+                self.mfp.sum(row[j] * self.var_x_list[j] if row[j] != 0 else 0 for j in range(self.edge_num)) ==
+                flow_ct[i],
                 ctname=f'node{i}')
         # 取消成本
-        for i in range(self.cancel_num):
-            row = ass_matrix[i]
-            ads_row = list(map(lambda x: abs(x), row))
-            if (not list_ge(row, [0]*self.edge_num)) and (not list_le(row, [0]*self.edge_num)):
-                self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] for j in range(self.edge_num)) +
-                                        self.var_y_list[i] * 2 == 2, ctname=f'cancel_node{i}')
+        # for i in range(self.cancel_num):
+        #     row = ass_matrix[i]
+        #     ads_row = list(map(lambda x: abs(x), row))
+        #     if relation:
+        #         if (not list_ge(row, [0] * self.edge_num)) and (not list_le(row, [0] * self.edge_num)):
+        #             self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] if ads_row[j] != 0 else 0 for
+        #                                                  j in range(self.edge_num))
+        #                                     + self.var_y_list[i] == 2, ctname=f'cancel_node{i}')
+        #     else:
+        #         if (not list_ge(row, [0] * self.edge_num)) and (not list_le(row, [0] * self.edge_num)):
+        #             self.mfp.add_constraint(self.mfp.sum(ads_row[j] * self.var_x_list[j] if ads_row[j] != 0 else 0 for
+        #                                                  j in range(self.edge_num))
+        #                                     + self.var_y_list[i] == 2, ctname=f'cancel_node{i}')
         self.mfp.minimize(self.mfp.sum(edge_cost[j] * self.var_x_list[j] for j in range(self.edge_num)) +
-                          self.mfp.sum(cancel_cost[j] * self.var_y_list[j] for j in range(len(cancel_cost))))
+                          self.mfp.sum(cancel_cost[j] * self.var_y_list[j] * 0.5 for j in range(len(cancel_cost))))
         self.result = None
 
     def add_mutex_constraint(self, mutex_graph_node_edges: dict):
@@ -201,6 +209,11 @@ class MultiFlowModel(object):
             self.mfp.add_constraint(self.mfp.sum(node_ct[j] * self.var_x_list[j] for j in range(self.edge_num)) <= 1,
                                     ctname=f'mut_flight{k}')
             k += 1
+
+    def add_fix_int_var(self, solution_x: list):
+        for i in range(len(solution_x)):
+            if solution_x[i] == 1:
+                self.mfp.add_constraint(self.var_x_list[i] == 1)
 
     def print_info(self):
         for j in range(self.node_num):

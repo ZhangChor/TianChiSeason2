@@ -297,42 +297,8 @@ class SolutionInfo(object):
         self.graph_node_strings = graph_node_strings
         self.var_num_ls = var_num_ls
         self.aircraft_num = len(var_num_ls)
-        self.scores = cost  # 得分（恢复成本）
-        self.iter_num = iter_num
-        self.running_time = timedelta(seconds=running_time)
 
-        self.aircraft_type_conversion = 0  # 机型改变数量
-        self.flight_cancellation = 0  # 取消航班数
-        self.del_flights = 0  # 延误航班数量
-        self.del_15m_flights = 0  # 延误15分钟以上航班数量
-        self.del_30m_flights = 0  # 延误30分钟以上航班数量
-        self.adv_flights = 0  # 提前航班数量
-        self.adv_15m_flights = 0  # 提前15分钟以上航班数量
-        self.adv_30m_flights = 0  # 提前30分钟以上航班数量
-        self.straighten_flights = 0  # 拉直航班数量
-        self.total_del_minutes = 0  # 总延误时间（分钟）
-        self.total_adv_minutes = 0  # 总提前时间（分钟）
-        self.swap_flights = 0  # 换机数量
-        self.performed_flights = 0  # 计划执行航班数量
-        self.make_up_flights = 0  # 补班数量
-
-        self.avg_del_minutes = 0  # 平均延误时间
-        self.avg_adv_minutes = 0  # 平均提前时间
-        self.error_rate = 0  # 异常率（延误或提前大于15分钟航班/(总航班-取消航班数量）
-
-        self.passenger_cancellation = 0  # 旅客取消人数
-        self.passenger_delay_nums = 0  # 旅客延误人数
-        self.passenger_delay_minutes = 0  # 旅客总延误时间
-        self.seat_remains = 0  # 剩余座位数
-
-    def time_str(self) -> str:
-        times = self.running_time
-        days = times.days
-        hours, remainder = divmod(times.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        seconds_formatted = "{:.3f}".format(times.microseconds / 1000000)
-        formatted_time = f"{days}_{hours}_{minutes}_{seconds}{seconds_formatted[2:]}"
-        return formatted_time
+        self.output = OutPutInfo(cost, iter_num, running_time)
 
     def _get_cid(self, index: int) -> int:
         for cid in range(1, self.aircraft_num + 1):
@@ -358,35 +324,35 @@ class SolutionInfo(object):
                     flight_info = graph_node.flight_info
                     adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
                     # begin statistical info
-                    self.performed_flights += len(flight_info["fids"])
+                    self.output.performed_flights += len(flight_info["fids"])
                     if adjust_time > zero_time:
-                        self.del_flights += 1
+                        self.output.del_flights += 1
                         delay_minutes = timedelta_minutes(adjust_time)
-                        self.total_del_minutes += delay_minutes
-                        self.passenger_delay_nums += flight_info["pn"]
-                        self.passenger_delay_minutes += flight_info["pn"] * delay_minutes
-                        self.seat_remains += flight_info["sn"] - flight_info["pn"]
+                        self.output.total_del_minutes += delay_minutes
+                        self.output.passenger_delay_nums += flight_info["pn"]
+                        self.output.passenger_delay_minutes += flight_info["pn"] * delay_minutes
+                        self.output.seat_remains += flight_info["sn"] - flight_info["pn"]
                         if adjust_time > pas_15_time:
-                            self.del_15m_flights += 1
+                            self.output.del_15m_flights += 1
                             if adjust_time > pas_30_time:
-                                self.del_30m_flights += 1
+                                self.output.del_30m_flights += 1
                     if adjust_time < zero_time:
-                        self.adv_flights += 1
-                        self.total_adv_minutes -= timedelta_minutes(adjust_time)
+                        self.output.adv_flights += 1
+                        self.output.total_adv_minutes -= timedelta_minutes(adjust_time)
                         if adjust_time < net_15_time:
-                            self.adv_15m_flights += 1
+                            self.output.adv_15m_flights += 1
                             if adjust_time < net_30_time:
-                                self.adv_30m_flights += 1
+                                self.output.adv_30m_flights += 1
                     if flight_info["tp"] != tp:
-                        self.aircraft_type_conversion += 1
+                        self.output.aircraft_type_conversion += 1
                     if flight_info["attr"] == "straighten":
-                        self.straighten_flights += 1
+                        self.output.straighten_flights += 1
                     if flight_info["attr"] == "through":
-                        self.passenger_cancellation += flight_info["tpn"]
+                        self.output.passenger_cancellation += flight_info["tpn"]
                     if flight_info["cid"] != cid:
-                        self.swap_flights += 1
+                        self.output.swap_flights += 1
                     if adjust_item.departure_time.day > flight_info["dpt"].day:
-                        self.make_up_flights += 1
+                        self.output.make_up_flights += 1
 
     def statistical_cancel_info(self, solution_y: list):
         graph_node_ls = self.graph_node_ls
@@ -394,14 +360,67 @@ class SolutionInfo(object):
             if solution_y[i] == 1:
                 graph_node: GraphNode = graph_node_ls[i]
                 flight_info = graph_node.flight_info
-                self.flight_cancellation += len(flight_info["fids"])
-                self.passenger_cancellation += flight_info["pn"]
-                self.seat_remains += flight_info["sn"]
-        self.error_rate = (self.del_15m_flights + self.adv_15m_flights) / self.performed_flights if self.performed_flights else 0
-        self.avg_del_minutes = self.total_del_minutes / self.del_flights if self.del_flights else 0
-        self.avg_adv_minutes = self.total_adv_minutes / self.adv_flights if self.adv_flights else 0
+                self.output.flight_cancellation += len(flight_info["fids"])
+                self.output.passenger_cancellation += flight_info["pn"]
+                self.output.seat_remains += flight_info["sn"]
+        self.output.error_rate = (self.output.del_15m_flights + self.output.adv_15m_flights) / self.output.performed_flights if self.output.performed_flights else 0
+        self.output.avg_del_minutes = self.output.total_del_minutes / self.output.del_flights if self.output.del_flights else 0
+        self.output.avg_adv_minutes = self.output.total_adv_minutes / self.output.adv_flights if self.output.adv_flights else 0
 
-    def data_picked(self):
+
+class DataSaver(object):
+    def __init__(self, aircraft_num: int, slot_capacity: int, file_path: str):
+        self.data_list = list()
+        self.aircraft_num = aircraft_num
+        self.slot_capacity = slot_capacity
+        self.file_path = file_path
+        self.field_name = ""
+
+    def write_csv(self, data_info: dict):
+        self.data_list.append(data_info)
+        file_name = self.file_path + "/cid" + str(self.aircraft_num) + f"slot{self.slot_capacity}" + ".csv"
+        if len(self.data_list) == 1:
+            self.field_name = self.data_list[0].keys()  # 使用第一个字典的keys作为列名
+            with open(file_name, mode='w', newline='') as csv_file:
+                writer = csv.DictWriter(csv_file, fieldnames=self.field_name)
+                writer.writeheader()
+                writer.writerow(self.data_list[0])
+        else:
+            with open(file_name, mode='a', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=self.field_name)
+                writer.writerow(self.data_list[-1])
+
+
+class OutPutInfo(object):
+    def __init__(self, cost=0.0, iter_num=0, running_time=0.0):
+        self.scores = cost  # 得分（恢复成本）
+        self.iter_num = iter_num
+        self.running_time = timedelta(seconds=running_time)
+        self.aircraft_type_conversion = 0  # 机型改变数量
+        self.flight_cancellation = 0  # 取消航班数
+        self.del_flights = 0  # 延误航班数量
+        self.del_15m_flights = 0  # 延误15分钟以上航班数量
+        self.del_30m_flights = 0  # 延误30分钟以上航班数量
+        self.adv_flights = 0  # 提前航班数量
+        self.adv_15m_flights = 0  # 提前15分钟以上航班数量
+        self.adv_30m_flights = 0  # 提前30分钟以上航班数量
+        self.straighten_flights = 0  # 拉直航班数量
+        self.total_del_minutes = 0  # 总延误时间（分钟）
+        self.total_adv_minutes = 0  # 总提前时间（分钟）
+        self.swap_flights = 0  # 换机数量
+        self.performed_flights = 0  # 计划执行航班数量
+        self.make_up_flights = 0  # 补班数量
+
+        self.avg_del_minutes = 0  # 平均延误时间
+        self.avg_adv_minutes = 0  # 平均提前时间
+        self.error_rate = 0  # 异常率（延误或提前大于15分钟航班/(总航班-取消航班数量）
+
+        self.passenger_cancellation = 0  # 旅客取消人数
+        self.passenger_delay_nums = 0  # 旅客延误人数
+        self.passenger_delay_minutes = 0  # 旅客总延误时间
+        self.seat_remains = 0  # 剩余座位数
+
+    def data_picked(self) -> dict:
         data = dict()
         data["Iter"] = self.iter_num
         data["Time"] = str(self.running_time)
@@ -428,26 +447,3 @@ class SolutionInfo(object):
         data["Adv30m"] = self.adv_30m_flights
         data["AvgAdv."] = "{:.1f}".format(self.avg_adv_minutes)
         return data
-
-
-class DataSaver(object):
-    def __init__(self, aircraft_num: int, slot_capacity: int, file_path: str):
-        self.data_list = list()
-        self.aircraft_num = aircraft_num
-        self.slot_capacity = slot_capacity
-        self.file_path = file_path
-        self.field_name = ""
-
-    def write_csv(self, data_info: dict):
-        self.data_list.append(data_info)
-        file_name = self.file_path + "/cid" + str(self.aircraft_num) + f"slot{self.slot_capacity}" + ".csv"
-        if len(self.data_list) == 1:
-            self.field_name = self.data_list[0].keys()  # 使用第一个字典的keys作为列名
-            with open(file_name, mode='w', newline='') as csv_file:
-                writer = csv.DictWriter(csv_file, fieldnames=self.field_name)
-                writer.writeheader()
-                writer.writerow(self.data_list[0])
-        else:
-            with open(file_name, mode='a', newline='') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.field_name)
-                writer.writerow(self.data_list[-1])
