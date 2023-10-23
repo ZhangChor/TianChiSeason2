@@ -1,5 +1,6 @@
 import csv
 from datetime import timedelta, datetime
+from scipy.sparse import csr_matrix
 from models.graph import Graph
 from models.handing import FlightData
 from models.utils import AirportParkingScene, AirfieldStoppages
@@ -26,11 +27,12 @@ class MultiFlowProblem(object):
         self.num2node_map = dict()
         self.edge_ls = dict()  # 储存可执行边
         self.edge2num_map = dict()  # 储存可执行边在邻接矩阵中的列的指标
-        self.ass_matrix = list()  # 储存邻接矩阵
+        self.ass_matrix = None  # 储存邻接矩阵
         self.edge_cost_list = list()  # 储存边的执行花费
         self.node_attr_list = list()  # 存储node的出入度情况
         self.cancel_ct_list = list()  # 储存取消约束
-        self.node_cancel_cost = list()  # node取消成本
+        # self.node_cancel_cost = list()  # node取消成本
+
         self.mutex_graph_node_edge_list = dict()
         self.exceeded_slots = list()  # 储存落入数量超过容量的slot信息
         self.exceeded_slots_capacity = list()  # 储存落入数量超过容量的slot的容量
@@ -52,6 +54,7 @@ class MultiFlowProblem(object):
             if node_num >= 0:
                 flight_cancel_cost.append(graph_node.flight_info["para"] * 1200 + graph_node.flight_info["pn"] * 4)
         self.flight_cancel_cost = flight_cancel_cost
+        self.mutex_flight_list = {i: set() for i in range(len(self.flight_cancel_cost))}  # 航班互斥约束
         self.slot_used = list()  # 储存每条路径的slot使用情况
         self.parking_used = list()  # 储存每条路径的停机使用情况
 
@@ -100,36 +103,39 @@ class MultiFlowProblem(object):
                 self.node2num_map[(v.key, ai.adjust_time)] = node_cnt
                 self.num2node_map[node_cnt] = (v.key, ai.adjust_time)
                 node_cnt += 1
-        self.node_attr_list = [0]*node_cnt
-        self.cancel_ct_list = [0]*node_cnt
-        self.node_cancel_cost = [0]*node_cnt
+        self.node_attr_list = [0] * node_cnt
         # 再遍历所有边，并做好map
         edge_cnt = 0
+        row, col, val = list(), list(), list()
         for v in self.graph_node_list.values():
+            v: GraphNode
             for ai in v.adjust_list.values():
+                ai: AdjustItem
                 edge_airm = (v.key, ai.adjust_time)
                 edge_airm_num = self.node2num_map[edge_airm]
-                if -aircraft_num <= v.key < 0:
+                if -aircraft_num <= v.key < 0:  # departure node
                     self.node_attr_list[edge_airm_num] = 1
-                elif v.key < -aircraft_num:
+                elif v.key < -aircraft_num:  # arrival node
                     airm_airport_graph_node = self.graph_node_list[v.key]
                     airm_airport = airm_airport_graph_node.flight_info['ap']
                     aircraft_ct = sum(self.flight_data.airport_list[airm_airport].terminal_ctp)
                     self.node_attr_list[edge_airm_num] = -aircraft_ct
-                else:
-                    self.cancel_ct_list[edge_airm_num] = 2
-                    self.node_cancel_cost[edge_airm_num] = self.flight_cancel_cost[v.key]
                 for from_graph_num, from_adjust_time, cost in ai.pre:
                     edge_from = (from_graph_num, from_adjust_time)
                     edge_from_num = self.node2num_map[edge_from]
                     self.edge2num_map[(edge_from_num, edge_airm_num)] = edge_cnt
                     self.edge_ls[edge_cnt] = (edge_from_num, edge_airm_num)
-                    column = [0] * node_cnt
-                    column[edge_from_num] = 1
-                    column[edge_airm_num] = -1
-                    self.ass_matrix.append(column)
+                    row.append(edge_from_num)
+                    col.append(edge_cnt)
+                    val.append(1)
+                    row.append(edge_airm_num)
+                    col.append(edge_cnt)
+                    val.append(-1)
+                    if from_graph_num >= 0:
+                        self.mutex_flight_list[from_graph_num].add(edge_cnt)
                     self.edge_cost_list.append(cost)
                     edge_cnt += 1
+        self.ass_matrix = csr_matrix((val, (row, col)), shape=(node_cnt, edge_cnt))
         # 有多个后继的增加互斥约束
         for v in self.graph_node_list.values():
             v: GraphNode
@@ -142,10 +148,6 @@ class MultiFlowProblem(object):
                         node_airm_num = self.node2num_map[node_airm]
                         edge = (node_from_num, node_airm_num)
                         edge_num = self.edge2num_map[edge]
-                        if v.key in self.mutex_graph_node_edge_list.keys():
-                            self.mutex_graph_node_edge_list[v.key].append(edge_num)
-                        else:
-                            self.mutex_graph_node_edge_list[v.key] = [edge_num]
                         # 判断是否停在了停机受限机场
                         suc_node_num, suc_adjust_time = node_airm
                         suc_dpt = self.graph_node_list[suc_node_num].adjust_list[suc_adjust_time].departure_time
@@ -153,24 +155,23 @@ class MultiFlowProblem(object):
                             parking_scene: AirfieldStoppages = self.airport_parking_scene[v.flight_info['ap']]
                             if v.flight_info['avt'] <= parking_scene.start_time and parking_scene.end_time <= suc_dpt:
                                 self.airport_parking_edges[v.flight_info['ap']].append(edge_num)
-        self.ass_matrix = list_reverse(self.ass_matrix)
 
     def run(self, relation=True):
         from time import time as current_time
         t10 = current_time()
         self.generate_association_matrix(self.flight_data.aircraft_volume)
-        mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list, self.node_cancel_cost,
-                                    relation=relation)
+        mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list,
+                                    self.mutex_flight_list, self.flight_cancel_cost, relation=relation)
         mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
         # mfp_solver.print_info()
         t11 = current_time()
-        print("构造问题时间：", t11-t10)
+        print("构造问题时间：", t11 - t10)
         mfp_solver.solve()
         self.optimal = mfp_solver.optimal
         self.solution_x = mfp_solver.solution_x
         self.solution_y = mfp_solver.solution_y
         t12 = current_time()
-        self.print_solution(t12-t11)
+        self.print_solution(t12 - t11)
         if not self.is_solution_int:
             print("SOLUTION IS NOT INTEGER.")
             # mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list,
@@ -193,7 +194,7 @@ class MultiFlowProblem(object):
             if i != int(i):
                 return False
         for i in self.solution_y:
-            if i not in (0, 2):
+            if i not in (0, 1):
                 return False
         return True
 
@@ -242,7 +243,7 @@ class MultiFlowProblem(object):
         # 计算成本，统计解的信息
         change_cost, execution_cost, cancel_cost = 0, 0, 0
         effect_flight = 0
-        cancel_graph_node = [1]*len(self.flight_cancel_cost)
+        cancel_graph_node = [1] * len(self.flight_cancel_cost)
         zero_time = timedelta(minutes=0)
         pas_15_time = timedelta(minutes=15)
         pas_30_time = timedelta(minutes=30)
@@ -304,7 +305,8 @@ class MultiFlowProblem(object):
                 self.output.flight_cancellation += len(flight_info["fids"])
                 self.output.passenger_cancellation += flight_info["pn"]
                 self.output.seat_remains += flight_info["sn"]
-        self.output.error_rate = (self.output.del_15m_flights + self.output.adv_15m_flights) / self.output.performed_flights if self.output.performed_flights else 0
+        self.output.error_rate = (
+                                             self.output.del_15m_flights + self.output.adv_15m_flights) / self.output.performed_flights if self.output.performed_flights else 0
         self.output.avg_del_minutes = self.output.total_del_minutes / self.output.del_flights if self.output.del_flights else 0
         self.output.avg_adv_minutes = self.output.total_adv_minutes / self.output.adv_flights if self.output.adv_flights else 0
 
