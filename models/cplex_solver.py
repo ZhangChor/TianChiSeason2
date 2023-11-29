@@ -1,10 +1,11 @@
 from docplex.mp.model import Model
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, csc_matrix, lil_matrix
 
 
 class MasterProblemSolver(object):
-    def __init__(self, route: list, cost: list, var_num_list: list, cancel: list, slot_used: list, slot_capacity: list,
+    def __init__(self, route: lil_matrix, cost: list, var_num_list: list, cancel: list, slot_used: list, slot_capacity: list,
                  parking_used: list, parking_capacity: list, relaxation=True):
+        self.route_matrix: csc_matrix = route.tocsc()
         self._flight_node_num = len(cancel)
         self._aircraft_num = len(var_num_list)
         self._route_num = sum(var_num_list)
@@ -26,9 +27,14 @@ class MasterProblemSolver(object):
             self._x_list = self._solver.binary_var_list(self._var_name_list_x, name='x')
         self._y_list = self._solver.continuous_var_list(self._var_name_list_y, name='y', ub=1)
         # 航班约束：每次航班最多仅能被选入解一次
+        # for j in range(self._flight_node_num):
+        #     flight_ct = self._solver.sum(route[i][j] * self._x_list[i]
+        #                                  for i in range(self._route_num)) + self._y_list[j] == 1
+        #     self._solver.add_constraint(flight_ct, ctname=f'flight_node{j}')
         for j in range(self._flight_node_num):
-            flight_ct = self._solver.sum(route[i][j] * self._x_list[i]
-                                         for i in range(self._route_num)) + self._y_list[j] == 1
+            col = self.route_matrix[:, j]
+            cols, zeros = col.nonzero()
+            flight_ct = self._solver.sum(self.route_matrix[i, j] * self._x_list[i] for i in cols) + self._y_list[j] == 1
             self._solver.add_constraint(flight_ct, ctname=f'flight_node{j}')
         start = 0
         cid = 0
@@ -104,7 +110,8 @@ class MasterProblemSolver(object):
 
 
 class ShortestPath(object):
-    def __init__(self, ass_matrix: list[list], node_attr: list, edge_cost: list, relaxation=True):
+    def __init__(self, ass_matrix: csr_matrix, node_attr: list, edge_cost: list, relaxation=True):
+        # ass_matrix := csr_matrix
         self.node_num = len(node_attr)  # number of node
         self.edge_num = len(edge_cost)  # number of edge
         self._var_name_list = [f'e{j}' for j in range(self.edge_num)]
@@ -115,7 +122,8 @@ class ShortestPath(object):
             self.var_list = self.sp.binary_var_list(self._var_name_list, name='x')
         for i in range(self.node_num):
             row = ass_matrix[i]
-            self.sp.add_constraint(self.sp.sum(row[j] * self.var_list[j] for j in range(self.edge_num)) == node_attr[i],
+            zeros, cols = row.nonzero()
+            self.sp.add_constraint(self.sp.sum(ass_matrix[i, j] * self.var_list[j] for j in cols) == node_attr[i],
                                    ctname=f'node{i}')
         self.sp.minimize(self.sp.sum(edge_cost[j] * self.var_list[j] for j in range(self.edge_num)))
         self.result = None

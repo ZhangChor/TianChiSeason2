@@ -3,13 +3,14 @@ from datetime import timedelta
 from time import time as current_time
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
+from scipy.sparse import csr_matrix, lil_matrix
 
 from models.graph import Graph
 from models.handing import FlightData
 from models.utils import dot_sum, change_aircraft_para
 from models.utils import GraphNode, AdjustItem, AdjTabItem, AirportSlot, SlotItem
 from models.utils import AirportParkingScene, AirfieldStoppages
-from models.utils import SolutionInfo, DataSaver
+from models.utils import SolutionInfo, DataSaver, matrix_row_insert
 from models.cplex_solver import ShortestPath, MasterProblemSolver
 
 
@@ -53,7 +54,7 @@ class ColumnGeneration(object):
         self.slot_dual = []
         self.airfield_stoppage_dual = []
 
-        self.route = list()  # 储存所有路径集
+        self.route: lil_matrix or None = None  # 储存所有路径集
         self.slot_used = list()  # 储存每条路径的slot使用情况
         self.parking_used = list()  # 储存每条路径的停机使用情况
         self.graph_node_strings = list()  # 与self.route一致，但保存的是graph_node和adjust_time信息
@@ -66,6 +67,13 @@ class ColumnGeneration(object):
         self.optimal_value_list = list()
         self.iter_num = 0
         self._add_route_reduce_cost = list()
+
+    @property
+    def route_array(self):
+        if self.route is not None:
+            return self.route.toarray().tolist()
+        else:
+            return []
 
     def add_airport_parking(self, airport_parking_constraint_list: list):
         airfield_stoppage_num = 0
@@ -258,20 +266,26 @@ class ColumnGeneration(object):
         node_arr = [0] * node_len
         node_arr[0] = 1
         node_arr[-1] = -1
-        ass_matrix: list[list[int]] = list()
-        for ati in adjacency_table:
-            ati: AdjTabItem
+        # ass_matrix: list[list[int]] = list()
+        row, col, val = list(), list(), list()
+        for i in range(node_len):
+            ati: AdjTabItem = adjacency_table[i]
             curr_num = ati.num
-            row = [0] * edge_len
+            # row = [0] * edge_len
             for suc_num in ati.suc:
                 edge = (curr_num, suc_num)
                 edge_num = edge2num_map[edge]
-                row[edge_num] = 1
+                row.append(i)
+                col.append(edge_num)
+                val.append(1)
             for pre_num in ati.pre:
                 edge = (pre_num, curr_num)
                 edge_num = edge2num_map[edge]
-                row[edge_num] = -1
-            ass_matrix.append(row)
+                row.append(i)
+                col.append(edge_num)
+                val.append(-1)
+            # ass_matrix.append(row)
+        ass_matrix = csr_matrix((val, (row, col)), shape=(node_len, edge_len))
         self.ass_matrix_list[aircraft_num] = ass_matrix
         self.node_attr_list[aircraft_num] = node_arr
         return ass_matrix
@@ -313,7 +327,8 @@ class ColumnGeneration(object):
             edge_index += 1
 
         graph_node_string = list()
-        new_route = [0] * self.flight_data.graph_node_cnt
+        # new_route = [0] * self.flight_data.graph_node_cnt
+        new_route: lil_matrix = lil_matrix([0] * self.flight_data.graph_node_cnt)
         # 需要统计该路径的slot 使用情况；是否使用停在了有限制的机场
         slot_used = [0] * len(self.exceeded_slots)
         parking_used = [0] * len(self.airport_parking_scene)
@@ -329,7 +344,7 @@ class ColumnGeneration(object):
             if airm_graph_node_num < 0:
                 continue
             airm_graph_node: GraphNode = self.graph_node_list[airm_graph_node_num]
-            new_route[airm_graph_node.key] = 1
+            new_route[0, airm_graph_node.key] = 1
             airm_flight_info = airm_graph_node.flight_info
             airm_adjust_item: AdjustItem = airm_graph_node.adjust_list[airm_adjust_time]
             # 统计slot使用情况
@@ -356,7 +371,7 @@ class ColumnGeneration(object):
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
         aircraft_route_set_end = aircraft_route_set_start + self.aircraft_route_nums[aircraft_index]
         # if new_route not in self.route[aircraft_route_set_start:aircraft_route_set_end]:
-        route_repeat = new_route in self.route[aircraft_route_set_start:aircraft_route_set_end]
+        route_repeat = new_route.toarray()[0].tolist() in self.route_array[aircraft_route_set_start:aircraft_route_set_end]
         slot_repeat = slot_used in self.slot_used[aircraft_route_set_start:aircraft_route_set_end]
         paring_repeat = parking_used in self.parking_used[aircraft_route_set_start:aircraft_route_set_end]
         if route_repeat and slot_repeat and paring_repeat:
@@ -364,7 +379,11 @@ class ColumnGeneration(object):
             return
         # 插入新增路径
         ins_index = sum(self.aircraft_route_nums[:(aircraft_index + 1)])
-        self.route.insert(ins_index, new_route)
+        # self.route.insert(ins_index, new_route)
+        if self.route is not None:
+            self.route = matrix_row_insert(self.route, ins_index, new_route)
+        else:
+            self.route = new_route
         self.slot_used.insert(ins_index, slot_used)
         self.parking_used.insert(ins_index, parking_used)
         self.graph_node_strings.insert(ins_index, graph_node_string)
@@ -436,6 +455,7 @@ class ColumnGeneration(object):
                 mp_solver.add_fix_int_var(self.solution_x)
             else:
                 break
+            # mp_solver.print_info()
             mp_solver.solve()
             self.solution_x = mp_solver.solution_x
             self.solution_y = mp_solver.solution_y
@@ -444,7 +464,7 @@ class ColumnGeneration(object):
                 self.aircraft_dual = mp_solver.aircraft_dual
                 self.slot_dual = mp_solver.slot_dual
                 self.airfield_stoppage_dual = mp_solver.parking_dual
-            # 当最优值发生变化，或即将退出循环时，记录详细的解的信息
+            # 当最优值发生变化或即将退出循环时，记录详细的解的信息
             if not self.optimal_value_list or self.optimal_value_list[-1] - mp_solver.optimal > 0.1 or quit_loop:
                 time_mark = current_time()
                 solution_info = SolutionInfo(self.graph_node_list, self.graph_node_strings, self.aircraft_route_nums,
@@ -468,8 +488,6 @@ class ColumnGeneration(object):
             if self.solution_x[i] == 1:
                 self.solution_route[cid] = self.graph_node_strings[i]
                 cid += 1
-
-
 
     def solve_sub_problem(self, aircraft_num: int):
         edge_cost = deep_copy(self.edge_cost_list[aircraft_num])
@@ -499,8 +517,8 @@ class ColumnGeneration(object):
     def iter_summary(self, start_time: float, stop=False):
         output_str = f"Iter num:{self.iter_num}" + '\t'
         output_str += "Running time:" + str(timedelta(seconds=current_time() - start_time)) + '\t'
-        output_str += f"Opt={int(self.optimal_value_list[-1]+0.5)}" + '  '
-        output_str += f"Route set={len(self.route)}" + "\n"
+        output_str += f"Opt={int(self.optimal_value_list[-1] + 0.5)}" + '  '
+        output_str += f"Route set={self.route.shape[0]}" + "\n"
 
         file_name = self.flight_data.workspace_path + r"/solution"
         file_name += "/cid" + str(self.flight_data.aircraft_volume) + f"slot{self.flight_data.slot_capacity}"
@@ -519,4 +537,3 @@ class ColumnGeneration(object):
             if i != int(i):
                 return False
         return True
-

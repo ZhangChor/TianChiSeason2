@@ -1,6 +1,6 @@
 from pandas import Series
 from datetime import timedelta, datetime
-
+from scipy.sparse import vstack
 import numpy as np
 import csv
 
@@ -363,7 +363,8 @@ class SolutionInfo(object):
                 self.output.flight_cancellation += len(flight_info["fids"])
                 self.output.passenger_cancellation += flight_info["pn"]
                 self.output.seat_remains += flight_info["sn"]
-        self.output.error_rate = (self.output.del_15m_flights + self.output.adv_15m_flights) / self.output.performed_flights if self.output.performed_flights else 0
+        self.output.error_rate = (
+                                             self.output.del_15m_flights + self.output.adv_15m_flights) / self.output.performed_flights if self.output.performed_flights else 0
         self.output.avg_del_minutes = self.output.total_del_minutes / self.output.del_flights if self.output.del_flights else 0
         self.output.avg_adv_minutes = self.output.total_adv_minutes / self.output.adv_flights if self.output.adv_flights else 0
 
@@ -447,3 +448,7 @@ class OutPutInfo(object):
         data["Adv30m"] = self.adv_30m_flights
         data["AvgAdv."] = "{:.1f}".format(self.avg_adv_minutes)
         return data
+
+
+def matrix_row_insert(matrix, index: int, rows_data):
+    return vstack([matrix[:index, :], rows_data, matrix[index:, :]]).tolil()
