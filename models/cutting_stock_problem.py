@@ -45,10 +45,11 @@ if __name__ == '__main__':
         m_set = range(len(length_of_demand))
         x_list = mp_solver.continuous_var_list(n_set, name='x')
         demand_ct = []
-        for i in m_set:
-            demand_ct.append(mp_solver.sum(x_list[j] * pattern[j][i] for j in n_set) >= num_of_demand[i])
-            mp_solver.add_constraint(demand_ct[i], ctname=f'demand{i}')
-        mp_solver.minimize(mp_solver.sum(x_list[j] * cost_of_pattern[j] for j in n_set))
+        for j in m_set:
+            dct = mp_solver.sum(x_list[i] * pattern[i][j] for i in n_set) >= num_of_demand[j]
+            demand_ct.append(dct)
+            mp_solver.add_constraint(dct, ctname=f'demand{j}')
+        mp_solver.minimize(mp_solver.sum(x_list[i] * cost_of_pattern[i] for i in n_set))
         mp_solver.solve()
         print(mp_solver.solution)
         dual_of_demand = [dct.dual_value for dct in demand_ct]

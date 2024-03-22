@@ -41,6 +41,9 @@ class ColumnGeneration(object):
         self.exceeded_slots_capacity = list()  # 储存落入数量超过容量的slot的容量
         self.exceeded_slots_map = dict()  # 储存落入数据超过容量的slot的标号
 
+        self.mp_running_time = 0
+        self.sp_running_time = 0
+
         # 设置对偶值
         self.aircraft_dual = [0] * len(self.flight_data.aircraft_list)
         flight_cancel_cost = []
@@ -371,7 +374,8 @@ class ColumnGeneration(object):
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
         aircraft_route_set_end = aircraft_route_set_start + self.aircraft_route_nums[aircraft_index]
         # if new_route not in self.route[aircraft_route_set_start:aircraft_route_set_end]:
-        route_repeat = new_route.toarray()[0].tolist() in self.route_array[aircraft_route_set_start:aircraft_route_set_end]
+        route_repeat = new_route.toarray()[0].tolist() in self.route_array[
+                                                          aircraft_route_set_start:aircraft_route_set_end]
         slot_repeat = slot_used in self.slot_used[aircraft_route_set_start:aircraft_route_set_end]
         paring_repeat = parking_used in self.parking_used[aircraft_route_set_start:aircraft_route_set_end]
         if route_repeat and slot_repeat and paring_repeat:
@@ -426,6 +430,7 @@ class ColumnGeneration(object):
         quit_loop = False
         while not quit_loop:
             self._add_route_reduce_cost = list()
+            sp_start = current_time()
             if parallel:
                 pool = ProcessPoolExecutor(max_workers=cpu_count() - 1)
                 task_list = []
@@ -441,13 +446,22 @@ class ColumnGeneration(object):
                 for aircraft_num in self.flight_data.aircraft_list.keys():
                     an, sol, at, op, ec = self.solve_sub_problem(aircraft_num)
                     self.add_column(aircraft_num, sol, at, route_optimal=op, execution_cost=ec)
+            sp_end = current_time()
+            self.sp_running_time += sp_end - sp_start
             # 开始求解主问题
+            mp_start = current_time()
             if not self._add_route_reduce_cost:
                 quit_loop = True
+            dif_optimal_value_list = [self.optimal_value_list[i] - self.optimal_value_list[i + 1] for i in
+                                      range(len(self.optimal_value_list) - 1)]
+            if len(self.optimal_value_list) > 5 and sum(dif_optimal_value_list[-5:]) < 0.01:
+                dec = True
+            else:
+                dec = False
             if not quit_loop:
                 mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
                                                 self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
-                                                self.parking_used, self.airport_parking_capacity)
+                                                self.parking_used, self.airport_parking_capacity, degeneracy=dec)
             elif not self.is_solution_int:
                 mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
                                                 self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
@@ -459,6 +473,8 @@ class ColumnGeneration(object):
             mp_solver.solve()
             self.solution_x = mp_solver.solution_x
             self.solution_y = mp_solver.solution_y
+            mp_end = current_time()
+            self.mp_running_time += mp_end - mp_start
             if not quit_loop:
                 self.flight_dual = mp_solver.flight_node_dual
                 self.aircraft_dual = mp_solver.aircraft_dual

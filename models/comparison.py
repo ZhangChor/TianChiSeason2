@@ -258,9 +258,9 @@ class MultiFlowProblem(object):
                 if graph_node_num >= 0:
                     cancel_graph_node[graph_node_num] = 0
 
-                    self.output.performed_flights += len(flight_info["fids"])
+                    self.output.performed_flights += 1
                     if flight_info["tmk"]:
-                        effect_flight += len(flight_info["fids"])
+                        effect_flight += 1
                     if adjust_time > zero_time:
                         self.output.del_flights += 1
                         delay_minutes = timedelta_minutes(adjust_time)
@@ -302,7 +302,7 @@ class MultiFlowProblem(object):
             if cancel_graph_node[i] == 1:
                 graph_node: GraphNode = self.graph_node_list[i]
                 flight_info = graph_node.flight_info
-                self.output.flight_cancellation += len(flight_info["fids"])
+                self.output.flight_cancellation += 1
                 self.output.passenger_cancellation += flight_info["pn"]
                 self.output.seat_remains += flight_info["sn"]
         self.output.error_rate = (

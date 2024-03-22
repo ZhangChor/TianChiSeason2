@@ -4,7 +4,7 @@ from scipy.sparse import csr_matrix, csc_matrix, lil_matrix
 
 class MasterProblemSolver(object):
     def __init__(self, route: lil_matrix, cost: list, var_num_list: list, cancel: list, slot_used: list, slot_capacity: list,
-                 parking_used: list, parking_capacity: list, relaxation=True):
+                 parking_used: list, parking_capacity: list, relaxation=True, degeneracy=False):
         self.route_matrix: csc_matrix = route.tocsc()
         self._flight_node_num = len(cancel)
         self._aircraft_num = len(var_num_list)
@@ -27,10 +27,6 @@ class MasterProblemSolver(object):
             self._x_list = self._solver.binary_var_list(self._var_name_list_x, name='x')
         self._y_list = self._solver.continuous_var_list(self._var_name_list_y, name='y', ub=1)
         # 航班约束：每次航班最多仅能被选入解一次
-        # for j in range(self._flight_node_num):
-        #     flight_ct = self._solver.sum(route[i][j] * self._x_list[i]
-        #                                  for i in range(self._route_num)) + self._y_list[j] == 1
-        #     self._solver.add_constraint(flight_ct, ctname=f'flight_node{j}')
         for j in range(self._flight_node_num):
             col = self.route_matrix[:, j]
             cols, zeros = col.nonzero()
@@ -57,6 +53,10 @@ class MasterProblemSolver(object):
         # 目标函数
         self._solver.minimize(self._solver.sum(cost[i] * self._x_list[i] for i in range(self._route_num)) +
                               self._solver.sum(cancel[j] * self._y_list[j] for j in range(self._flight_node_num)))
+        # if degeneracy:
+        #     params = self._solver.parameters
+        #     # 设置求解方法为内点法
+        #     params.lpmethod = 4
 
     def add_fix_int_var(self, solution_x: list):
         for i in range(len(solution_x)):

@@ -3,11 +3,13 @@ import sys
 
 from datetime import datetime, timedelta
 from time import time as current_time
+import numpy as np
 
 from models.handing import FlightData
 from models.graph import Graph
 from models.iterate import ColumnGeneration
 from models.comparison import MultiFlowProblem
+from models.multi_label import MultiLabel
 
 sys.path.append(r'/home/zc/TianChiSeason2')
 
@@ -18,7 +20,7 @@ if __name__ == '__main__':
     duration_start = datetime(year=2017, month=5, day=6, hour=6)
     duration_end = datetime(year=2017, month=5, day=9, hour=0)
 
-    max_lead_time = timedelta(hours=6)
+    # max_lead_time = timedelta(hours=6)
     max_domestic_delay = timedelta(hours=24)
     max_foreign_delay = timedelta(hours=36)
 
@@ -26,9 +28,9 @@ if __name__ == '__main__':
     slot_capacity = 24
 
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
-                             max_lead_time, max_domestic_delay, max_foreign_delay,
+                             max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity, workspace_path)
-    AIRCRAFT_NUM = 20
+    AIRCRAFT_NUM = 23
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -56,20 +58,27 @@ if __name__ == '__main__':
     # mega_graph.save_graph_node_list()
     t1 = current_time()
     print('构造图时间', t1 - t0)
-    cg = ColumnGeneration(mega_graph)
+    # cg = ColumnGeneration(mega_graph)
     airport_parking_constraint_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
                                        (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
                                        (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 0),
                                        (25, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 11),
                                        (57, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 7)]
     # cg.add_airport_parking(airport_parking_constraint_list)
-    # cg.run(parallel=True)
-    t2 = current_time()
-    print(f"列生成运行时间：{t2 - t1}")
+    # cg.run(parallel=False)
+    # t2 = current_time()
+    # print(f"列生成运行时间：{t2 - t1}")
     # 对比实验，多商品流模型
     mfm = MultiFlowProblem(mega_graph)
     mfm.add_airport_parking(airport_parking_constraint_list)
-    mfm.run(relation=True)
+    mfm.run(relation=False)
     t3 = current_time()
-    print(f"商品流运行时间：{t3 - t2}")
+    # print(f"商品流运行时间：{t3 - t2}")
     print(f"总运行时间：{t3 - t0}")
+    # dif = np.array(cg.solution_y) - np.array(mfm.solution_y)
+    # print(f"解的差异个数：{sum(dif)}")
+    # cancel_num = 0
+    # for i, x in enumerate(mfm.solution_y):
+    #     if x:
+    #         cancel_num += len(flight_data.graph_node_list[i].flight_info["fids"])
+    print("取消率：{:.2f}%".format(sum(mfm.solution_y) / len(flight_data.schedule) * 100))
