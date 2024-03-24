@@ -113,7 +113,7 @@ class Graph(object):
                     is_landing_forbid_t = self.typhoon_scene[alter_flight_ap].landing_forbid(alter_flight_avt)
                 else:
                     is_landing_forbid_t = False
-                if not alter_adjust_list and (is_takeoff_forbid_t or is_landing_forbid_t):
+                if not alter_flight_info['tmk'] and (is_takeoff_forbid_t or is_landing_forbid_t):
                     # 生成方案，依次判断并连接
                     alter_flight_info['tmk'] = True
                     self._typhoon_scene_adj(is_takeoff_forbid_t, is_landing_forbid_t, alter_node_num,
@@ -273,9 +273,10 @@ class Graph(object):
                 delay_time_by_takeoff = opening_time_by_takeoff - alter_flight_dpt
             if is_landing_forbid_c:
                 delay_time_by_landing = opening_time_by_landing - alter_flight_avt
-            if delay_time_by_takeoff <= max_delay_time and delay_time_by_landing <= max_delay_time:
+            if delay_time_by_takeoff <= max_delay_time and delay_time_by_landing <= max_delay_time and not alter_flight_info['cmk']:
                 delay_time = max(delay_time_by_takeoff, delay_time_by_landing)
                 print(f'node:{alter_node_num} cid:{alter_flight_info["cid"]} fids:{alter_flight_info["fids"]}受机场关闭影响，延误{delay_time}')
+                alter_flight_info['cmk'] = True
                 adjust_item = AdjustItem(alter_node_num, alter_flight_dpt + delay_time,
                                          alter_flight_info['avt'] + delay_time, delay_time)
                 self.flight_data.adjust_item_cnt += 1

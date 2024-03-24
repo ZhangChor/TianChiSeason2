@@ -197,6 +197,7 @@ class FlightData(object):
                         flight_info['attr'] = 'flight'
                         flight_info['cost'] = 0
                         flight_info['tmk'] = False  # 台风标记，False表示不受台风影响，True表示受台风影响
+                        flight_info['cmk'] = False  # 机场关闭标记
 
                         graph_node = GraphNode(self.graph_node_cnt, flight_info)
                         normal_flight.append(graph_node.key)
