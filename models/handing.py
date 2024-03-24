@@ -119,6 +119,22 @@ class FlightData(object):
 
         for ap in self.airport_ls:
             self.airport_list[ap] = Airport(ap, self.aircraft_type_ls)
+        cn2en = {
+            '航班ID': 'fids',
+            '日期': 'date',
+            '国际/国内': 'dom',
+            '航班号': 'fno',
+            '起飞机场': 'dp',
+            '降落机场': 'ap',
+            '起飞时间': 'dpt',
+            '降落时间': 'avt',
+            '飞机ID': 'cid',
+            '机型': 'tp',
+            '旅客数': 'pn',
+            '联程旅客数': 'tpn',
+            '座位数': 'sn',
+            '重要系数': 'para'
+        }
 
         normal_flight = []
         through_flight = []
@@ -253,25 +269,6 @@ class FlightData(object):
                                                                                       slot_end_time)
                                     graph_node = self.adjust_through_flight(graph_node, takeoff_fallin_slot, dataframe)
                                     self.mutex_flight_node_nums.add(self.graph_node_cnt)
-                        # 联程航班也可以分为两个航班
-                        for _, row in dataframe.iterrows():
-                            flight_info = dict()
-                            info_dict = row.to_dict()
-                            for k, v in info_dict.items():
-                                flight_info[cn2en[k]] = v
-
-                            flight_info['attr'] = 'flight'
-                            flight_info['cost'] = 0
-                            flight_info['tmk'] = False  # 台风标记，False表示不受台风影响，True表示受台风影响
-                            flight_info['cmk'] = False  # 机场关闭标记
-
-                            graph_node = GraphNode(self.graph_node_cnt, flight_info)
-                            normal_flight.append(graph_node.key)
-                            self.graph_node_list[graph_node.key] = graph_node
-                            self.airport_list[flight_info['dp']].departure_flight_list.append(self.graph_node_cnt)
-                            self.airport_list[flight_info['ap']].arrival_flight_list.append(self.graph_node_cnt)
-                            self.graph_node_cnt += 1
-
                         through_flight.append(graph_node.key)
                     else:
                         normal_flight.append(graph_node.key)
