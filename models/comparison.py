@@ -341,7 +341,7 @@ class MultiFlowProblem(object):
         cancel_flights = list()
         for i in range(len(self.cancel_graph_node)):
             if self.cancel_graph_node[i] == 1:
-                cancel_flights.append(self.graph_node_list[i].flight_info["fno"])
+                cancel_flights.append(f"{i}{self.graph_node_list[i].flight_info['fno']}")
         print("取消航班：", *cancel_flights)
         zero_time = timedelta(0)
         del_minutes = 0
