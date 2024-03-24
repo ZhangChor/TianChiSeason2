@@ -82,3 +82,4 @@ if __name__ == '__main__':
     #     if x:
     #         cancel_num += len(flight_data.graph_node_list[i].flight_info["fids"])
     print("取消率：{:.2f}%".format(sum(mfm.solution_y) / len(flight_data.schedule) * 100))
+    mfm.print_route()
