@@ -219,25 +219,6 @@ class FlightData(object):
                         if is_landing_forbid or is_takeoff_forbid:
                             flight_info['tmk'] = True
                             slots = self.slot_scene[landing_airport][0]
-                            if flight_info['dom'] == '国内':
-                                # 尝试拉直
-                                flight_info['attr'] = 'straighten'
-                                straighten_flight_key = str(flight_info['dp']) + '-' + str(flight_info['ap']) + '-' + \
-                                                        str(flight_info['tp'])
-                                if straighten_flight_key in self.flying_time.keys():
-                                    straighten_flying_time = timedelta(
-                                        minutes=int(self.flying_time[straighten_flight_key]))
-                                else:
-                                    straighten_flying_time = flight_info['avt'] - flight_info['dpt'] - turn_time
-                                straighten = AdjustItem(self.graph_node_cnt, flight_info['dpt'],
-                                                        flight_info['dpt'] + straighten_flying_time)
-                                self.adjust_item_cnt += 1
-                                straighten.cancelled_passenger_num = dataframe['联程旅客数'].iloc[0]
-                                # 拉直成本与因拉直而取消的旅客成本
-                                flight_info['cost'] = (750 + 4 * flight_info['tpn']) * flight_info['para']
-                                graph_node.adjust_list[zero_time] = straighten
-                                strengthen_flight.append(graph_node.key)
-
                             # if is_landing_forbid:
                             # 尝试降落延误
                             if flight_info['dom'] == '国内':
@@ -257,18 +238,6 @@ class FlightData(object):
                                 si = takeoff_fallin_slot.pop(0)
                                 si.fall_in.append((graph_node.key, si.start_time - turn_time))
 
-                            if is_takeoff_forbid:
-                                # 尝试起飞提前
-                                earliest_advance_time = dataframe['起飞时间'].iloc[-1] - self.max_lead_time
-                                earliest_landing_time = earliest_advance_time - turn_time
-                                gap = self.typhoon_scene[landing_airport].landing_forbid_start() - earliest_landing_time
-                                if gap > zero_time:
-                                    slot_end_time = min(earliest_advance_time + gap,
-                                                        self.typhoon_scene[landing_airport].start_time)
-                                    takeoff_fallin_slot = slots.takeoff_slot.midst_eq(earliest_advance_time,
-                                                                                      slot_end_time)
-                                    graph_node = self.adjust_through_flight(graph_node, takeoff_fallin_slot, dataframe)
-                                    self.mutex_flight_node_nums.add(self.graph_node_cnt)
                         through_flight.append(graph_node.key)
                     else:
                         normal_flight.append(graph_node.key)
