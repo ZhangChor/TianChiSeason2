@@ -253,6 +253,24 @@ class FlightData(object):
                                                                                       slot_end_time)
                                     graph_node = self.adjust_through_flight(graph_node, takeoff_fallin_slot, dataframe)
                                     self.mutex_flight_node_nums.add(self.graph_node_cnt)
+                        # 联程航班也可以分为两个航班
+                        for _, row in dataframe.iterrows():
+                            flight_info = dict()
+                            info_dict = row.to_dict()
+                            for k, v in info_dict.items():
+                                flight_info[cn2en[k]] = v
+
+                            flight_info['attr'] = 'flight'
+                            flight_info['cost'] = 0
+                            flight_info['tmk'] = False  # 台风标记，False表示不受台风影响，True表示受台风影响
+                            flight_info['cmk'] = False  # 机场关闭标记
+
+                            graph_node = GraphNode(self.graph_node_cnt, flight_info)
+                            normal_flight.append(graph_node.key)
+                            self.graph_node_list[graph_node.key] = graph_node
+                            self.airport_list[flight_info['dp']].departure_flight_list.append(self.graph_node_cnt)
+                            self.airport_list[flight_info['ap']].arrival_flight_list.append(self.graph_node_cnt)
+                            self.graph_node_cnt += 1
 
                         through_flight.append(graph_node.key)
                     else:
