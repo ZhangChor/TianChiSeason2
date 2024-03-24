@@ -352,12 +352,13 @@ class MultiFlowProblem(object):
             output = False
             for graph_node_num, adjust_time in graph_node_string:
                 if graph_node_num >= 0:
-                    flight_node_num = self.graph_node_list[graph_node_num].flight_info["fno"]
-                    if flight_node_num // 10 != cid:
-                        route_str += f"*{flight_node_num}"
+                    flight_node_fids = self.graph_node_list[graph_node_num].flight_info["fids"]
+                    f_cid = self.graph_node_list[graph_node_num].flight_info['cid']
+                    if f_cid != cid:
+                        route_str += f"*{graph_node_num}{flight_node_fids}"
                         output = True
                     else:
-                        route_str += f"{flight_node_num}"
+                        route_str += f"{graph_node_num}{flight_node_fids}"
                     if adjust_time > zero_time:
                         d_min = int(timedelta_minutes(adjust_time))
                         del_minutes += d_min
