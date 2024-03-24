@@ -31,7 +31,8 @@ class MultiFlowProblem(object):
         self.edge_cost_list = list()  # 储存边的执行花费
         self.node_attr_list = list()  # 存储node的出入度情况
         self.cancel_ct_list = list()  # 储存取消约束
-        # self.node_cancel_cost = list()  # node取消成本
+        self.node_cancel_cost = list()  # node取消成本
+        self.cancel_graph_node = list()
 
         self.mutex_graph_node_edge_list = dict()
         self.exceeded_slots = list()  # 储存落入数量超过容量的slot信息
@@ -243,7 +244,7 @@ class MultiFlowProblem(object):
         # 计算成本，统计解的信息
         change_cost, execution_cost, cancel_cost = 0, 0, 0
         effect_flight = 0
-        cancel_graph_node = [1] * len(self.flight_cancel_cost)
+        self.cancel_graph_node = [1] * len(self.flight_cancel_cost)
         zero_time = timedelta(minutes=0)
         pas_15_time = timedelta(minutes=15)
         pas_30_time = timedelta(minutes=30)
@@ -256,7 +257,7 @@ class MultiFlowProblem(object):
                 flight_info = graph_node.flight_info
                 adjust_item: AdjustItem = graph_node.adjust_list[adjust_time]
                 if graph_node_num >= 0:
-                    cancel_graph_node[graph_node_num] = 0
+                    self.cancel_graph_node[graph_node_num] = 0
 
                     self.output.performed_flights += 1
                     if flight_info["tmk"]:
@@ -295,11 +296,11 @@ class MultiFlowProblem(object):
                     #         change_cost += 15
                     #     else:
                     #         change_cost += 5
-        cancel_cost += dot_sum(cancel_graph_node, self.flight_cancel_cost)
+        cancel_cost += dot_sum(self.cancel_graph_node, self.flight_cancel_cost)
         execution_cost += dot_sum(self.solution_x, self.edge_cost_list)
 
-        for i in range(len(cancel_graph_node)):
-            if cancel_graph_node[i] == 1:
+        for i in range(len(self.cancel_graph_node)):
+            if self.cancel_graph_node[i] == 1:
                 graph_node: GraphNode = self.graph_node_list[i]
                 flight_info = graph_node.flight_info
                 self.output.flight_cancellation += 1
@@ -335,3 +336,37 @@ class MultiFlowProblem(object):
             writer = csv.DictWriter(csv_file, fieldnames=header_field_name)
             writer.writeheader()
             writer.writerow(route_info)
+
+    def print_route(self):
+        cancel_flights = list()
+        for i in range(len(self.cancel_graph_node)):
+            if self.cancel_graph_node[i] == 1:
+                cancel_flights.append(self.graph_node_list[i].flight_info["fno"])
+        print("取消航班：", *cancel_flights)
+        zero_time = timedelta(0)
+        del_minutes = 0
+        # for cid, graph_node_string in self.solution_route.items():
+        for cid in sorted(self.solution_route.keys()):
+            graph_node_string = self.solution_route[cid]
+            route_str = f"{cid}: "
+            output = False
+            for graph_node_num, adjust_time in graph_node_string:
+                if graph_node_num >= 0:
+                    flight_node_num = self.graph_node_list[graph_node_num].flight_info["fids"]
+                    if flight_node_num // 10 != cid:
+                        route_str += f"*{flight_node_num}"
+                        output = True
+                    else:
+                        route_str += f"{flight_node_num}"
+                    if adjust_time > zero_time:
+                        d_min = int(timedelta_minutes(adjust_time))
+                        del_minutes += d_min
+                        route_str += f"+{d_min} "
+                        output = True
+                    else:
+                        route_str += " "
+            if len(route_str) <= 5:
+                output = True
+            if output:
+                print(route_str)
+        print("总延误时间：", del_minutes)
