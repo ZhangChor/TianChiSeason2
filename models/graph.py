@@ -314,7 +314,7 @@ class Graph(object):
         if alter_flight_dpt + turn_time + delay_time > self.flight_data.duration_end:
             return
         # 延误时间离散化
-        max_split = 4
+        max_split = 2
         if delay_time > timedelta(minutes=60):
             delay_hours = delay_time.days * 24 + timedelta_minutes(delay_time)/60
             delay_time = timedelta(hours=(delay_hours//max_split + 1) * max_split)
