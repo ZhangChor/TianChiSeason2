@@ -355,10 +355,10 @@ class MultiFlowProblem(object):
                     flight_node_fids = self.graph_node_list[graph_node_num].flight_info["fids"]
                     f_cid = self.graph_node_list[graph_node_num].flight_info['cid']
                     if f_cid != cid:
-                        route_str += f"*{flight_node_fids}"
+                        route_str += f"*{graph_node_num}({flight_node_fids})"
                         output = True
                     else:
-                        route_str += f"{flight_node_fids}"
+                        route_str += f"{graph_node_num}({flight_node_fids})"
                     if adjust_time > zero_time:
                         d_min = int(timedelta_minutes(adjust_time))
                         del_minutes += d_min
