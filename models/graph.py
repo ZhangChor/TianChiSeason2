@@ -214,19 +214,19 @@ class Graph(object):
         if is_takeoff_forbid_t:  # 起飞遭遇台风场景
             slots: AirportSlot = self.slot_scene[alter_flight_dp][0]
             # 尝试提前
-            takeoff_slots: Slot = slots.takeoff_slot
-            earliest_advance_time = alter_flight_dpt - max_lead_time
-            advance_slot = takeoff_slots.midst_eq(earliest_advance_time,
-                                                  self.typhoon_scene[alter_flight_dp].start_time)
-            if advance_slot:
-                self.advance_flight_node_nums.add(alter_node_num)
+            # takeoff_slots: Slot = slots.takeoff_slot
+            # earliest_advance_time = alter_flight_dpt - max_lead_time
+            # advance_slot = takeoff_slots.midst_eq(earliest_advance_time,
+            #                                       self.typhoon_scene[alter_flight_dp].start_time)
+            # if advance_slot:
+            #     self.advance_flight_node_nums.add(alter_node_num)
             # 尝试延误
-            # landing_slots = slots.landing_slot
+            landing_slots = slots.landing_slot
             latest_delayed_time = alter_flight_dpt + max_delay_time
-            delay_slot = takeoff_slots.midst_eq(self.typhoon_scene[alter_flight_dp].end_time,
+            delay_slot = landing_slots.midst_eq(self.typhoon_scene[alter_flight_dp].end_time,
                                                 latest_delayed_time)
             # 将落入的slot加入node中
-            available_slot = advance_slot + delay_slot
+            available_slot = delay_slot
             for s in available_slot:
                 s: SlotItem
                 adjust_time = s.start_time - alter_flight_dpt
