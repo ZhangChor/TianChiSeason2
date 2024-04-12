@@ -6,14 +6,10 @@ from models.handing import FlightData
 from models.utils import AirportParkingScene, AirfieldStoppages
 from models.utils import GraphNode, AirportSlot, SlotItem, AdjustItem, OutPutInfo
 from models.utils import dot_sum, timedelta_minutes
-from models.cplex_solver import MultiFlowModel
+from models.cplex_solver import MinCostFlowModel
 
 
-def list_reverse(nums):
-    return list(map(list, zip(*nums)))
-
-
-class MultiFlowProblem(object):
+class MimCostFlowProblem(object):
     def __init__(self, graph: Graph):
         self.graph: Graph = graph
         self.flight_data: FlightData = graph.flight_data
@@ -161,8 +157,8 @@ class MultiFlowProblem(object):
         from time import time as current_time
         t10 = current_time()
         self.generate_association_matrix(self.flight_data.aircraft_volume)
-        mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list,
-                                    self.mutex_flight_list, self.flight_cancel_cost, relation=relation)
+        mfp_solver = MinCostFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list,
+                                      self.mutex_flight_list, self.flight_cancel_cost, relation=relation)
         mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
         # mfp_solver.print_info()
         t11 = current_time()
@@ -175,16 +171,6 @@ class MultiFlowProblem(object):
         self.print_solution(t12 - t11)
         if not self.is_solution_int:
             print("SOLUTION IS NOT INTEGER.")
-            # mfp_solver = MultiFlowModel(self.ass_matrix, self.node_attr_list, self.edge_cost_list,
-            #                             self.node_cancel_cost, relation=False)
-            # mfp_solver.add_mutex_constraint(self.mutex_graph_node_edge_list)
-            # mfp_solver.add_fix_int_var(self.solution_x)
-            # mfp_solver.solve()
-            # self.optimal = mfp_solver.optimal
-            # self.solution_x = mfp_solver.solution_x
-            # self.solution_y = mfp_solver.solution_y
-            # t2 = current_time()
-            # self.print_solution(t2 - t1, mode='a')
             pass
         else:
             print("SOLVE DONE.")

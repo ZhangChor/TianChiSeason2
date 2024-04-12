@@ -68,6 +68,8 @@ class ColumnGeneration(object):
         self.iter_num = 0
         self._add_route_reduce_cost = list()
 
+        self.subproblem_running_time = 0
+
     @property
     def route_array(self):
         if self.route is not None:
@@ -426,6 +428,7 @@ class ColumnGeneration(object):
         quit_loop = False
         while not quit_loop:
             self._add_route_reduce_cost = list()
+            sub_start = current_time()
             if parallel:
                 pool = ProcessPoolExecutor(max_workers=cpu_count() - 1)
                 task_list = []
@@ -441,6 +444,8 @@ class ColumnGeneration(object):
                 for aircraft_num in self.flight_data.aircraft_list.keys():
                     an, sol, at, op, ec = self.solve_sub_problem(aircraft_num)
                     self.add_column(aircraft_num, sol, at, route_optimal=op, execution_cost=ec)
+            sub_end = current_time()
+            self.subproblem_running_time += sub_end - sub_start
             # 开始求解主问题
             if not self._add_route_reduce_cost:
                 quit_loop = True

@@ -169,7 +169,7 @@ class ShortestPath(object):
         return self.sp.objective_value
 
 
-class MultiFlowModel(object):
+class MinCostFlowModel(object):
     def __init__(self, ass_matrix: csr_matrix, flow_ct: list, edge_cost: list,
                  mutex_matrix: dict, cancel_cost: list, relation=True):
         self.node_num = len(flow_ct)  # number of node
@@ -177,7 +177,7 @@ class MultiFlowModel(object):
         self.cancel_num = len(cancel_cost)  # number of flight
         self._var_x_name_list = [f'e{j}' for j in range(self.edge_num)]
         self._var_y_name_list = [f'n{i}' for i in range(self.cancel_num)]
-        self.mfp = Model(name="multi flow model problem")
+        self.mfp = Model(name="minium cost flow model problem")
         if relation:
             self.var_x_list = self.mfp.continuous_var_list(self._var_x_name_list, name='x', ub=1)
             self.var_y_list = self.mfp.continuous_var_list(self._var_y_name_list, name='y', ub=1)
@@ -264,7 +264,7 @@ if __name__ == "__main__":
     # b = [2, 0, 0, 0, -2]
     # c = [2, 1, -3, 0, 2, 2]
     # d = [2, 2, 2]
-    # sl = MultiFlowModel(A, b, c, d)
+    # sl = MinCostFlowModel(A, b, c, d)
     # sl.print_info()
     # sl.solve()
     # print(sl.optimal)
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     b = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1]
     c = [0, 2, 0, 0, 2, 4, 2, 0, 0, 0, 2, 1, 0, 1, 0, 2, 3]
     d = [0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0]
-    sl = MultiFlowModel(A, b, c, d)
+    sl = MinCostFlowModel(A, b, c, d)
     # sl.print_info()
     sl.solve()
     print(sl.optimal)
