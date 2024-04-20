@@ -49,8 +49,8 @@ class ColumnGeneration(object):
             if node_num >= 0:
                 flight_cancel_cost.append(graph_node.flight_info["para"] * 1200 + graph_node.flight_info["pn"] * 4)
         self.flight_cancel_cost = flight_cancel_cost
-        self.flight_dual = [x for x in flight_cancel_cost]  # 航班取消成本为航班对偶值的上界
-        # self.flight_dual = [0] * len(flight_cancel_cost)  # 初始航班对偶值设为0
+        # self.flight_dual = [x for x in flight_cancel_cost]  # 航班取消成本为航班对偶值的上界
+        self.flight_dual = [0] * len(flight_cancel_cost)  # 初始航班对偶值设为0
         self.slot_dual = []
         self.airfield_stoppage_dual = []
 
@@ -366,8 +366,8 @@ class ColumnGeneration(object):
                     parking_used[self.airport_parking_map[airm_flight_info['dp']]] = 1
 
         route_reduce_cost += -dot_sum(self.slot_dual, slot_used) - dot_sum(self.airfield_stoppage_dual, parking_used)
-        if route_reduce_cost >= 0:
-            print(f'飞机ID={aircraft_num}最短路径的RC>=0, RC={route_reduce_cost}')
+        if route_reduce_cost > 0:
+            print(f'飞机ID={aircraft_num}最短路径的RC>0, RC={route_reduce_cost}')
             return
         aircraft_index = aircraft_num - 1
         aircraft_route_set_start = sum(self.aircraft_route_nums[:aircraft_index])
