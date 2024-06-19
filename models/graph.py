@@ -8,6 +8,7 @@ from models.utils import timedelta_minutes
 
 
 def model_change_para(before: int, after: int, map_ls: dict):
+    # 机型转换成本参数
     if before == after:
         return 0
     else:
@@ -15,6 +16,7 @@ def model_change_para(before: int, after: int, map_ls: dict):
 
 
 def passenger_delay_para(delay_time: timedelta):
+    # 乘客延误时间成本参数
     if delay_time <= timedelta(hours=2):
         return 1
     elif delay_time <= timedelta(hours=4):
@@ -26,6 +28,7 @@ def passenger_delay_para(delay_time: timedelta):
 
 
 def passenger_endorse_delay_para(delay_time: timedelta):
+    # 旅客转运人数成本参数
     if delay_time < timedelta(hours=6):
         return delay_time.seconds / (3600 * 30)
     elif delay_time < timedelta(hours=12):
@@ -41,9 +44,15 @@ def passenger_endorse_delay_para(delay_time: timedelta):
 
 
 class Graph(object):
+    """
+    构造图
+    self.graph_node_list：
+    有飞机是1~n, 他的虚拟源节点就是-1~-n, 虚拟沉没节点就是-n-1, -n-2, ...
+    graph_node >= 0 就是正常需要调整的航班节点。
+    """
     def __init__(self, flight_data: FlightData):
         self.flight_data = flight_data
-        self.graph_node_list = flight_data.graph_node_list
+        self.graph_node_list = flight_data.graph_node_list  # 虚拟节点
         self.queue = list()
         self.edge_num = 0
         self.close_scene = CloseScene()
@@ -54,6 +63,7 @@ class Graph(object):
         for tip_node in flight_data.aircraft_list.values():
             self.queue.append((tip_node.adjust_list[timedelta(0)].departure_time, tip_node.key,
                                tip_node.adjust_list[timedelta(0)].adjust_time))
+
         self.type_change_map = {'12': 0, '13': 2, '14': 4, '21': 0.5, '23': 2, '24': 4,
                                 '31': 1.5, '32': 1.5, '34': 2, '41': 1.5, '42': 1.5, '43': 2}
 
@@ -64,6 +74,8 @@ class Graph(object):
             self.close_scene.add_scene(airport_num, airport_closed)
 
     def build_graph_v2(self):
+        # 构造可行图函数
+        # 可能有问题
         node_list: dict = self.flight_data.graph_node_list
         airport_list: dict = self.flight_data.airport_list
         # dest_airport_list: dict = self.flight_data.dest_airport_list

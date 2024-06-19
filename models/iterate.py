@@ -19,6 +19,7 @@ def deep_copy(data):
 
 
 class ColumnGeneration(object):
+    # 列生成模型
     def __init__(self, graph: Graph):
         self.graph: Graph = graph
         self.flight_data: FlightData = graph.flight_data
@@ -454,6 +455,7 @@ class ColumnGeneration(object):
                                                 self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
                                                 self.parking_used, self.airport_parking_capacity)
             elif not self.is_solution_int:
+                # 分支定界
                 mp_solver = MasterProblemSolver(self.route, self.route_execution_costs, self.aircraft_route_nums,
                                                 self.flight_cancel_cost, self.slot_used, self.exceeded_slots_capacity,
                                                 self.parking_used, self.airport_parking_capacity, relaxation=False)
@@ -465,6 +467,7 @@ class ColumnGeneration(object):
             self.solution_x = mp_solver.solution_x
             self.solution_y = mp_solver.solution_y
             if not quit_loop:
+                # 更新对偶值
                 self.flight_dual = mp_solver.flight_node_dual
                 self.aircraft_dual = mp_solver.aircraft_dual
                 self.slot_dual = mp_solver.slot_dual

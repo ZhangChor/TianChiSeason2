@@ -10,6 +10,7 @@ from models.cplex_solver import MinCostFlowModel
 
 
 class MimCostFlowProblem(object):
+    # 全单模模型
     def __init__(self, graph: Graph):
         self.graph: Graph = graph
         self.flight_data: FlightData = graph.flight_data

@@ -8,6 +8,7 @@ from models.utils import Typhoon, TyphoonScene, SlotScene, MidstAirport
 
 
 class FlightData(object):
+    # 数据处理
     def __init__(self, min_turn_time: timedelta, duration_start: datetime, duration_end: datetime,
                  max_lead_time: timedelta, max_domestic_delay: timedelta, max_foreign_delay: timedelta,
                  split_time: timedelta, slot_capacity: int, workspace:str):

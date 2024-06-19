@@ -3,6 +3,7 @@ from scipy.sparse import csr_matrix, csc_matrix, lil_matrix
 
 
 class MasterProblemSolver(object):
+    # 列生成算主问题模型
     def __init__(self, route: lil_matrix, cost: list, var_num_list: list, cancel: list, slot_used: list, slot_capacity: list,
                  parking_used: list, parking_capacity: list, relaxation=True):
         self.route_matrix: csc_matrix = route.tocsc()
@@ -59,6 +60,8 @@ class MasterProblemSolver(object):
                               self._solver.sum(cancel[j] * self._y_list[j] for j in range(self._flight_node_num)))
 
     def add_fix_int_var(self, solution_x: list):
+        # 把已经是整数的变量设置为整数，用于列生成算法最后分支定价
+        # 固定已有的整数变量
         for i in range(len(solution_x)):
             if solution_x[i] == 1:
                 self._solver.add_constraint(self._x_list[i] == 1)
@@ -110,6 +113,7 @@ class MasterProblemSolver(object):
 
 
 class ShortestPath(object):
+    # 列生成算法子问题模型
     def __init__(self, ass_matrix: csr_matrix, node_attr: list, edge_cost: list, relaxation=True):
         # ass_matrix := csr_matrix
         self.node_num = len(node_attr)  # number of node
@@ -170,6 +174,7 @@ class ShortestPath(object):
 
 
 class MinCostFlowModel(object):
+    # 全单模矩阵模型
     def __init__(self, ass_matrix: csr_matrix, flow_ct: list, edge_cost: list,
                  mutex_matrix: dict, cancel_cost: list, relation=True):
         self.node_num = len(flow_ct)  # number of node
