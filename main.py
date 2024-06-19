@@ -28,7 +28,7 @@ if __name__ == '__main__':
     flight_data = FlightData(min_turn_time, duration_start, duration_end,
                              max_lead_time, max_domestic_delay, max_foreign_delay,
                              split_time, slot_capacity, workspace_path)
-    AIRCRAFT_NUM = 25
+    AIRCRAFT_NUM = 142
     typhoon_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17)),
                     (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17))]
@@ -56,17 +56,17 @@ if __name__ == '__main__':
     # mega_graph.save_graph_node_list()
     t1 = current_time()
     print('构造图时间', t1 - t0)
-    cg = ColumnGeneration(mega_graph)
+    # cg = ColumnGeneration(mega_graph)
     airport_parking_constraint_list = [(49, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
                                        (50, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 2),
                                        (61, datetime(2017, 5, 6, 16), datetime(2017, 5, 7, 17), 0),
                                        (25, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 11),
                                        (57, datetime(2017, 5, 7, 4), datetime(2017, 5, 7, 6), 7)]
-    cg.add_airport_parking(airport_parking_constraint_list)
-    cg.run(parallel=True)
-    t2 = current_time()
-    print(f"列生成运行时间：{t2 - t1}")
-    print(f"子问题求解时间：{cg.subproblem_running_time}")
+    # cg.add_airport_parking(airport_parking_constraint_list)
+    # cg.run(parallel=False)
+    # t2 = current_time()
+    # print(f"列生成运行时间：{t2 - t1}")
+    # print(f"子问题求解时间：{cg.subproblem_running_time}")
     # 对比实验，多商品流模型
     # mfm = MimCostFlowProblem(mega_graph)
     # mfm.add_airport_parking(airport_parking_constraint_list)
@@ -75,5 +75,5 @@ if __name__ == '__main__':
     # print(f"商品流运行时间：{t3 - t2}")
     # print(f"总运行时间：{t3 - t0}")
     # mfm.print_route()
-    from models.img_plt import line_plt
-    line_plt(cg)
+    # from models.img_plt import line_plt
+    # line_plt(cg)
